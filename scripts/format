@@ -1,0 +1,11 @@
+#!/bin/bash
+set -eufo pipefail
+
+echo "goimports" >&2
+find $(pwd) -type f -name '*.go' |
+    grep -v ".pb.go" |
+    xargs bazel run --noshow_progress --ui_event_filters= @org_golang_x_tools//cmd/goimports -- -l -w
+echo "importsort" >&2
+find $(pwd) -type f -name '*.go' |
+    grep -v ".pb.go" |
+    xargs bazel run --noshow_progress --ui_event_filters= @com_github_aristanetworks_goarista//cmd/importsort -- -w -s NOT_SPECIFIED

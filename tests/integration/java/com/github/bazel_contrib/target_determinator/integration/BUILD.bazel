@@ -1,0 +1,120 @@
+load("@rules_jvm_external//:defs.bzl", "artifact")
+
+java_test(
+    name = "BazelDiffIntegrationTest",
+    timeout = "long",
+    srcs = [
+        "BazelDiffIntegrationTest.java",
+    ],
+    data = ["@bazel_diff//src/main/java/com/bazel_diff:bazel-diff"],
+    env_inherit = ["CC"],
+    jvm_flags = [
+        "-Dbazel_diff=$(rootpath @bazel_diff//src/main/java/com/bazel_diff:bazel-diff)",
+    ],
+    tags = ["no-sandbox"],
+    deps = [
+        ":tests",
+        ":util",
+        artifact("com.google.guava:guava"),
+        artifact("com.google.code.findbugs:jsr305"),
+        artifact("junit:junit"),
+        "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
+    ],
+)
+
+java_test(
+    name = "BazelDifferIntegrationTest",
+    timeout = "long",
+    srcs = [
+        "BazelDifferIntegrationTest.java",
+    ],
+    data = ["@bazel_differ//cli:bazel-differ"],
+    env_inherit = ["CC"],
+    jvm_flags = [
+        "-Dbazel_differ=$(rootpath @bazel_differ//cli:bazel-differ)",
+    ],
+    tags = ["no-sandbox"],
+    deps = [
+        ":tests",
+        ":util",
+        artifact("com.google.guava:guava"),
+        artifact("com.google.code.findbugs:jsr305"),
+        artifact("junit:junit"),
+        "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
+    ],
+)
+
+java_test(
+    name = "TargetDeterminatorIntegrationTest",
+    timeout = "long",
+    srcs = [
+        "TargetDeterminatorIntegrationTest.java",
+    ],
+    data = ["//target-determinator"],
+    env_inherit = ["CC"],
+    jvm_flags = [
+        "-Dtarget_determinator=$(rootpath //target-determinator)",
+    ],
+    shard_count = 3,
+    tags = ["no-sandbox"],
+    deps = [
+        ":tests",
+        ":util",
+        artifact("com.google.guava:guava"),
+        artifact("com.google.code.findbugs:jsr305"),
+        artifact("junit:junit"),
+        "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
+    ],
+)
+
+java_test(
+    name = "TargetDeterminatorSpecificFlagsTest",
+    srcs = [
+        "TargetDeterminatorSpecificFlagsTest.java",
+    ],
+    data = ["//target-determinator"],
+    env_inherit = ["CC"],
+    jvm_flags = [
+        "-Dtarget_determinator=$(rootpath //target-determinator)",
+    ],
+    tags = ["no-sandbox"],
+    deps = [
+        ":tests",
+        ":util",
+        "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
+        artifact("junit:junit"),
+        artifact("org.eclipse.jgit:org.eclipse.jgit"),
+    ],
+)
+
+java_library(
+    name = "tests",
+    srcs = [
+        "Tests.java",
+    ],
+    exports = [":util"],
+    deps = [
+        ":util",
+        "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
+        artifact("com.google.guava:guava"),
+        artifact("org.eclipse.jgit:org.eclipse.jgit"),
+        artifact("org.hamcrest:hamcrest-all"),
+        artifact("junit:junit"),
+    ],
+)
+
+java_library(
+    name = "util",
+    srcs = [
+        "TargetComputationErrorException.java",
+        "TargetDeterminator.java",
+        "TestdataRepo.java",
+        "Util.java",
+    ],
+    deps = [
+        "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
+        artifact("com.google.guava:guava"),
+        artifact("org.eclipse.jgit:org.eclipse.jgit"),
+        artifact("org.hamcrest:hamcrest-all"),
+    ],
+)

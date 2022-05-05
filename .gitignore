@@ -1,0 +1,4 @@
+/bazel-*
+/.ijwb/
+
+/third_party/protobuf/bazel/*/*.pb.go

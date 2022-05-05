@@ -1,0 +1,15 @@
+#!/bin/bash
+set -eufo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+
+# We don't want gazelle to update this vendored file, so we will need to undo any changes it makes.
+cp "${SCRIPT_DIR}"/../third_party/go/bazel_differ_deps.bzl "${SCRIPT_DIR}"/../third_party/go/bazel_differ_deps.bzl.bak
+
+go mod tidy
+echo -e 'def go_dependencies():\n    pass\n' >third_party/go/deps.bzl
+bazel run //:gazelle -- update-repos -from_file=go.mod -prune -to_macro "third_party/go/deps.bzl%go_dependencies"
+
+mv "${SCRIPT_DIR}"/../third_party/go/bazel_differ_deps.bzl.bak "${SCRIPT_DIR}"/../third_party/go/bazel_differ_deps.bzl
+
+"${SCRIPT_DIR}"/format

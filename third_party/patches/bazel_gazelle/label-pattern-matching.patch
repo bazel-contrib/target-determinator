@@ -1,0 +1,388 @@
+commit dfed19229cbcec18d2338d92561b2ef2cd6f7384
+Author: Daniel Wagner-Hall <dwagnerhall@apple.com>
+Date:   Tue Apr 5 14:57:09 2022 +0100
+
+    Add label pattern matching logic
+    
+    This implements target patterns as described at https://bazel.build/docs/build#specifying-build-targets
+    
+    It is not immediately used in Gazelle, but as Gazelle has a solid label
+    parsing library, it felt like a useful place for this logic to live for
+    general use.
+
+diff --git a/internal/go_repository_tools_srcs.bzl b/internal/go_repository_tools_srcs.bzl
+index 48de4e3..50f9a6d 100644
+--- a/internal/go_repository_tools_srcs.bzl
++++ b/internal/go_repository_tools_srcs.bzl
+@@ -43,6 +43,7 @@ GO_REPOSITORY_TOOLS_SRCS = [
+ 	"@bazel_gazelle//internal/wspace:finder.go",
+ 	"@bazel_gazelle//label:BUILD.bazel",
+ 	"@bazel_gazelle//label:label.go",
++	"@bazel_gazelle//label:pattern.go",
+ 	"@bazel_gazelle//language:BUILD.bazel",
+ 	"@bazel_gazelle//language/go:BUILD.bazel",
+ 	"@bazel_gazelle//language/go:config.go",
+diff --git a/label/BUILD.bazel b/label/BUILD.bazel
+index a559085..aa93d8a 100644
+--- a/label/BUILD.bazel
++++ b/label/BUILD.bazel
+@@ -2,7 +2,10 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+ 
+ go_library(
+     name = "label",
+-    srcs = ["label.go"],
++    srcs = [
++        "label.go",
++        "pattern.go",
++    ],
+     importpath = "github.com/bazelbuild/bazel-gazelle/label",
+     visibility = ["//visibility:public"],
+     deps = ["//pathtools"],
+@@ -10,7 +13,10 @@ go_library(
+ 
+ go_test(
+     name = "label_test",
+-    srcs = ["label_test.go"],
++    srcs = [
++        "label_test.go",
++        "pattern_test.go",
++    ],
+     embed = [":label"],
+ )
+ 
+@@ -21,6 +27,8 @@ filegroup(
+         "BUILD.bazel",
+         "label.go",
+         "label_test.go",
++        "pattern.go",
++        "pattern_test.go",
+     ],
+     visibility = ["//visibility:public"],
+ )
+diff --git a/label/pattern.go b/label/pattern.go
+new file mode 100644
+index 0000000..3512016
+--- /dev/null
++++ b/label/pattern.go
+@@ -0,0 +1,115 @@
++package label
++
++import (
++	"fmt"
++	"path"
++	"strings"
++
++	"github.com/bazelbuild/bazel-gazelle/pathtools"
++)
++
++type Pattern struct {
++	Repo          string
++	Pkg           string
++	Recursive     bool
++	IsExplicitAll bool
++	SpecificName  string
++}
++
++// NoPattern is the zero value of Pattern. It is not a valid pattern and may be
++// returned when an error occurs.
++var NoPattern = Pattern{}
++
++// ParsePattern parses a pattern which may match some Labels.
++// See https://docs.bazel.build/versions/main/guide.html#target-patterns
++// If non-absolute patterns are passed, they are assumed to be relative to the repo root.
++//
++// Only a single pattern may be matched, no compound of complex query patterns
++// (i.e. there is no support for parsing `foo/... + bar/...`),
++// and negative patterns are not supported
++// (i.e. there is no support for parsing -//foo/...).
++func ParsePattern(s string) (Pattern, error) {
++	if !strings.HasPrefix(s, "//") && !strings.HasPrefix(s, "@") {
++		s = "//" + s
++	}
++	if strings.HasSuffix(s, ":*") {
++		s = s[:len(s)-1] + "all"
++	} else if strings.HasSuffix(s, ":all-targets") {
++		s = s[:len(s)-11] + "all"
++	}
++
++	label, err := Parse(s)
++	if err != nil {
++		return NoPattern, err
++	}
++	repo := label.Repo
++	recursive := false
++	isExplicitAll := false
++	specificName := ""
++
++	if strings.HasSuffix(label.Pkg, "...") {
++		recursive = true
++		if label.Name == "..." {
++			label.Name = ""
++		}
++
++		if label.Pkg == "..." {
++			label.Pkg = ""
++		} else {
++			label.Pkg = label.Pkg[0 : len(label.Pkg)-4]
++		}
++	}
++	pkg := label.Pkg
++
++	if label.Name == "all" {
++		isExplicitAll = true
++	} else {
++		specificName = label.Name
++	}
++	return Pattern{
++		Repo:          repo,
++		Pkg:           pkg,
++		Recursive:     recursive,
++		IsExplicitAll: isExplicitAll,
++		SpecificName:  specificName,
++	}, nil
++}
++
++// Matches returns whether a label matches a pattern.
++// See https://bazel.build/docs/build#specifying-build-targets
++// Relative patterns are assumed to be relative to the repo root.
++// This comparison is purely lexical - no analysis is performed such as whether
++// a label refers to a non-default output of a rule.
++func (p *Pattern) Matches(l Label) bool {
++	if p.Repo != l.Repo {
++		return false
++	}
++	if p.Pkg == l.Pkg {
++		return p.IsExplicitAll || p.SpecificName == l.Name || p.Recursive
++	}
++	return p.Recursive && pathtools.HasPrefix(l.Pkg, p.Pkg)
++}
++
++func (p Pattern) String() string {
++	var repo string
++	if p.Repo != "" && p.Repo != "@" {
++		repo = fmt.Sprintf("@%s", p.Repo)
++	} else {
++		repo = p.Repo
++	}
++	var name string
++	if p.IsExplicitAll {
++		name = ":all"
++	} else if p.SpecificName != "" && path.Base(p.Pkg) != p.SpecificName {
++		name = fmt.Sprintf(":%s", p.SpecificName)
++	}
++	var dotDotDot string
++	if p.Recursive {
++		if p.Pkg == "" {
++			dotDotDot = "..."
++		} else {
++			dotDotDot = "/..."
++		}
++	}
++	return fmt.Sprintf("%s//%s%s%s", repo, p.Pkg, dotDotDot, name)
++}
+diff --git a/label/pattern_test.go b/label/pattern_test.go
+new file mode 100644
+index 0000000..c4921b2
+--- /dev/null
++++ b/label/pattern_test.go
+@@ -0,0 +1,200 @@
++package label
++
++import (
++	"reflect"
++	"testing"
++)
++
++func TestPatternParse(t *testing.T) {
++	for _, tc := range []struct {
++		s       string
++		want    Pattern
++		wantErr bool
++	}{
++		{s: "//:foo", want: Pattern{SpecificName: "foo"}},
++		{s: "//:bar", want: Pattern{SpecificName: "bar"}},
++		{s: "//:all", want: Pattern{IsExplicitAll: true}},
++		{s: "//:*", want: Pattern{IsExplicitAll: true}},
++		{s: "//:all-targets", want: Pattern{IsExplicitAll: true}},
++		{s: "//...", want: Pattern{Recursive: true}},
++		{s: "//...:all", want: Pattern{Recursive: true, IsExplicitAll: true}},
++		{s: "//...:*", want: Pattern{Recursive: true, IsExplicitAll: true}},
++		{s: "//...:all-targets", want: Pattern{Recursive: true, IsExplicitAll: true}},
++
++		{s: "//foo", want: Pattern{Pkg: "foo", SpecificName: "foo"}},
++		{s: "//foo:foo", want: Pattern{Pkg: "foo", SpecificName: "foo"}},
++		{s: "//foo:bar", want: Pattern{Pkg: "foo", SpecificName: "bar"}},
++		{s: "//foo:all", want: Pattern{Pkg: "foo", IsExplicitAll: true}},
++		{s: "//foo:*", want: Pattern{Pkg: "foo", IsExplicitAll: true}},
++		{s: "//foo:all-targets", want: Pattern{Pkg: "foo", IsExplicitAll: true}},
++		{s: "//foo/...", want: Pattern{Pkg: "foo", Recursive: true}},
++		{s: "//foo/...:all", want: Pattern{Pkg: "foo", Recursive: true, IsExplicitAll: true}},
++		{s: "//foo/...:*", want: Pattern{Pkg: "foo", Recursive: true, IsExplicitAll: true}},
++		{s: "//foo/...:all-targets", want: Pattern{Pkg: "foo", Recursive: true, IsExplicitAll: true}},
++
++		{s: "@beep//foo", want: Pattern{Repo: "beep", Pkg: "foo", SpecificName: "foo"}},
++		{s: "@beep//foo:foo", want: Pattern{Repo: "beep", Pkg: "foo", SpecificName: "foo"}},
++		{s: "@beep//foo:bar", want: Pattern{Repo: "beep", Pkg: "foo", SpecificName: "bar"}},
++		{s: "@beep//foo:all", want: Pattern{Repo: "beep", Pkg: "foo", IsExplicitAll: true}},
++		{s: "@beep//foo:*", want: Pattern{Repo: "beep", Pkg: "foo", IsExplicitAll: true}},
++		{s: "@beep//foo:all-targets", want: Pattern{Repo: "beep", Pkg: "foo", IsExplicitAll: true}},
++		{s: "@beep//foo/...", want: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}},
++		{s: "@beep//foo/...:all", want: Pattern{Repo: "beep", Pkg: "foo", Recursive: true, IsExplicitAll: true}},
++		{s: "@beep//foo/...:*", want: Pattern{Repo: "beep", Pkg: "foo", Recursive: true, IsExplicitAll: true}},
++		{s: "@beep//foo/...:all-targets", want: Pattern{Repo: "beep", Pkg: "foo", Recursive: true, IsExplicitAll: true}},
++
++		{s: ":foo", want: Pattern{SpecificName: "foo"}},
++		{s: ":bar", want: Pattern{SpecificName: "bar"}},
++		{s: ":all", want: Pattern{IsExplicitAll: true}},
++		{s: ":*", want: Pattern{IsExplicitAll: true}},
++		{s: ":all-targets", want: Pattern{IsExplicitAll: true}},
++		{s: "...", want: Pattern{Recursive: true}},
++		{s: "...:all", want: Pattern{Recursive: true, IsExplicitAll: true}},
++		{s: "...:*", want: Pattern{Recursive: true, IsExplicitAll: true}},
++		{s: "...:all-targets", want: Pattern{Recursive: true, IsExplicitAll: true}},
++	} {
++		got, err := ParsePattern(tc.s)
++		if err != nil && !tc.wantErr {
++			t.Errorf("ParsePattern(%s): got error %s ; want success", tc.s, err)
++			continue
++		}
++		if err == nil && tc.wantErr {
++			t.Errorf("ParsePattern(%s): got pattern %#v ; want error", tc.s, got)
++			continue
++		}
++		if !reflect.DeepEqual(got, tc.want) {
++			t.Errorf("ParsePattern(%s): got pattern %#v ; want %#v", tc.s, got, tc.want)
++		}
++	}
++}
++
++func TestPatternMatches(t *testing.T) {
++	for _, tc := range []struct {
++		pattern Pattern
++		label   Label
++		want    bool
++	}{
++		// //foo/...
++		{pattern: Pattern{Pkg: "foo", Recursive: true}, label: Label{Pkg: "", Name: "foo"}, want: false},
++		{pattern: Pattern{Pkg: "foo", Recursive: true}, label: Label{Pkg: "", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "foo", Recursive: true}, label: Label{Pkg: "foo", Name: "foo"}, want: true},
++		{pattern: Pattern{Pkg: "foo", Recursive: true}, label: Label{Pkg: "foo", Name: "bar"}, want: true},
++		{pattern: Pattern{Pkg: "foo", Recursive: true}, label: Label{Pkg: "foo/bar", Name: "bar"}, want: true},
++		{pattern: Pattern{Pkg: "foo", Recursive: true}, label: Label{Pkg: "foo/bar", Name: "baz"}, want: true},
++		{pattern: Pattern{Pkg: "foo", Recursive: true}, label: Label{Pkg: "bar", Name: "baz"}, want: false},
++
++		// //foo:all
++		{pattern: Pattern{Pkg: "foo", IsExplicitAll: true}, label: Label{Pkg: "", Name: "foo"}, want: false},
++		{pattern: Pattern{Pkg: "foo", IsExplicitAll: true}, label: Label{Pkg: "", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "foo", IsExplicitAll: true}, label: Label{Pkg: "foo", Name: "foo"}, want: true},
++		{pattern: Pattern{Pkg: "foo", IsExplicitAll: true}, label: Label{Pkg: "foo", Name: "bar"}, want: true},
++		{pattern: Pattern{Pkg: "foo", IsExplicitAll: true}, label: Label{Pkg: "foo/bar", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "foo", IsExplicitAll: true}, label: Label{Pkg: "foo/bar", Name: "baz"}, want: false},
++		{pattern: Pattern{Pkg: "foo", IsExplicitAll: true}, label: Label{Pkg: "bar", Name: "baz"}, want: false},
++
++		// //foo:foo
++		{pattern: Pattern{Pkg: "foo", SpecificName: "foo"}, label: Label{Pkg: "", Name: "foo"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "foo"}, label: Label{Pkg: "", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "foo"}, label: Label{Pkg: "foo", Name: "foo"}, want: true},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "foo"}, label: Label{Pkg: "foo", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "foo"}, label: Label{Pkg: "foo/bar", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "foo"}, label: Label{Pkg: "foo/bar", Name: "baz"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "foo"}, label: Label{Pkg: "bar", Name: "baz"}, want: false},
++
++		// //foo:bar
++		{pattern: Pattern{Pkg: "foo", SpecificName: "bar"}, label: Label{Pkg: "", Name: "foo"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "bar"}, label: Label{Pkg: "", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "bar"}, label: Label{Pkg: "foo", Name: "foo"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "bar"}, label: Label{Pkg: "foo", Name: "bar"}, want: true},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "bar"}, label: Label{Pkg: "foo/bar", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "bar"}, label: Label{Pkg: "foo/bar", Name: "baz"}, want: false},
++		{pattern: Pattern{Pkg: "foo", SpecificName: "bar"}, label: Label{Pkg: "bar", Name: "baz"}, want: false},
++
++		// //...
++		{pattern: Pattern{Pkg: "", Recursive: true}, label: Label{Pkg: "", Name: "foo"}, want: true},
++		{pattern: Pattern{Pkg: "", Recursive: true}, label: Label{Pkg: "", Name: "bar"}, want: true},
++		{pattern: Pattern{Pkg: "", Recursive: true}, label: Label{Pkg: "foo", Name: "foo"}, want: true},
++		{pattern: Pattern{Pkg: "", Recursive: true}, label: Label{Pkg: "foo", Name: "bar"}, want: true},
++		{pattern: Pattern{Pkg: "", Recursive: true}, label: Label{Pkg: "foo/bar", Name: "bar"}, want: true},
++		{pattern: Pattern{Pkg: "", Recursive: true}, label: Label{Pkg: "foo/bar", Name: "baz"}, want: true},
++		{pattern: Pattern{Pkg: "", Recursive: true}, label: Label{Pkg: "bar", Name: "baz"}, want: true},
++
++		// //:all
++		{pattern: Pattern{Pkg: "", IsExplicitAll: true}, label: Label{Pkg: "", Name: "foo"}, want: true},
++		{pattern: Pattern{Pkg: "", IsExplicitAll: true}, label: Label{Pkg: "", Name: "bar"}, want: true},
++		{pattern: Pattern{Pkg: "", IsExplicitAll: true}, label: Label{Pkg: "foo", Name: "foo"}, want: false},
++		{pattern: Pattern{Pkg: "", IsExplicitAll: true}, label: Label{Pkg: "foo", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "", IsExplicitAll: true}, label: Label{Pkg: "foo/bar", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "", IsExplicitAll: true}, label: Label{Pkg: "foo/bar", Name: "baz"}, want: false},
++		{pattern: Pattern{Pkg: "", IsExplicitAll: true}, label: Label{Pkg: "bar", Name: "baz"}, want: false},
++
++		// //:foo
++		{pattern: Pattern{Pkg: "", SpecificName: "foo"}, label: Label{Pkg: "", Name: "foo"}, want: true},
++		{pattern: Pattern{Pkg: "", SpecificName: "foo"}, label: Label{Pkg: "", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "foo"}, label: Label{Pkg: "foo", Name: "foo"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "foo"}, label: Label{Pkg: "foo", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "foo"}, label: Label{Pkg: "foo/bar", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "foo"}, label: Label{Pkg: "foo/bar", Name: "baz"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "foo"}, label: Label{Pkg: "bar", Name: "baz"}, want: false},
++
++		// //:bar
++		{pattern: Pattern{Pkg: "", SpecificName: "bar"}, label: Label{Pkg: "", Name: "foo"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "bar"}, label: Label{Pkg: "", Name: "bar"}, want: true},
++		{pattern: Pattern{Pkg: "", SpecificName: "bar"}, label: Label{Pkg: "foo", Name: "foo"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "bar"}, label: Label{Pkg: "foo", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "bar"}, label: Label{Pkg: "foo/bar", Name: "bar"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "bar"}, label: Label{Pkg: "foo/bar", Name: "baz"}, want: false},
++		{pattern: Pattern{Pkg: "", SpecificName: "bar"}, label: Label{Pkg: "bar", Name: "baz"}, want: false},
++
++		// @beep//foo/...
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Pkg: "", Name: "foo"}, want: false},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Pkg: "", Name: "bar"}, want: false},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Pkg: "foo", Name: "foo"}, want: false},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Pkg: "foo", Name: "bar"}, want: false},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Pkg: "foo/bar", Name: "bar"}, want: false},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Pkg: "foo/bar", Name: "baz"}, want: false},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Pkg: "bar", Name: "baz"}, want: false},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Repo: "beep", Pkg: "", Name: "foo"}, want: false},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Repo: "beep", Pkg: "", Name: "bar"}, want: false},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Repo: "beep", Pkg: "foo", Name: "foo"}, want: true},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Repo: "beep", Pkg: "foo", Name: "bar"}, want: true},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Repo: "beep", Pkg: "foo/bar", Name: "bar"}, want: true},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Repo: "beep", Pkg: "foo/bar", Name: "baz"}, want: true},
++		{pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}, label: Label{Repo: "beep", Pkg: "bar", Name: "baz"}, want: false},
++	} {
++		got := tc.pattern.Matches(tc.label)
++		if tc.want != got {
++			t.Errorf("%#v got %v", tc, got)
++		}
++	}
++}
++
++func TestPatternString(t *testing.T) {
++	for _, tc := range []struct {
++		want    string
++		pattern Pattern
++	}{
++		{want: "//:foo", pattern: Pattern{SpecificName: "foo"}},
++		{want: "//:bar", pattern: Pattern{SpecificName: "bar"}},
++		{want: "//:all", pattern: Pattern{IsExplicitAll: true}},
++		{want: "//...", pattern: Pattern{Recursive: true}},
++		{want: "//...:all", pattern: Pattern{Recursive: true, IsExplicitAll: true}},
++
++		{want: "//foo", pattern: Pattern{Pkg: "foo", SpecificName: "foo"}},
++		{want: "//foo:bar", pattern: Pattern{Pkg: "foo", SpecificName: "bar"}},
++		{want: "//foo:all", pattern: Pattern{Pkg: "foo", IsExplicitAll: true}},
++		{want: "//foo/...", pattern: Pattern{Pkg: "foo", Recursive: true}},
++		{want: "//foo/...:all", pattern: Pattern{Pkg: "foo", Recursive: true, IsExplicitAll: true}},
++
++		{want: "@beep//foo", pattern: Pattern{Repo: "beep", Pkg: "foo", SpecificName: "foo"}},
++		{want: "@beep//foo:bar", pattern: Pattern{Repo: "beep", Pkg: "foo", SpecificName: "bar"}},
++		{want: "@beep//foo:all", pattern: Pattern{Repo: "beep", Pkg: "foo", IsExplicitAll: true}},
++		{want: "@beep//foo/...", pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true}},
++		{want: "@beep//foo/...:all", pattern: Pattern{Repo: "beep", Pkg: "foo", Recursive: true, IsExplicitAll: true}},
++	} {
++		got := tc.pattern.String()
++		if tc.want != got {
++			t.Errorf("%#v.String() = %q; want %q", tc.pattern, got, tc.want)
++		}
++	}
++}

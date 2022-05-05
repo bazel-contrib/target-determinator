@@ -1,0 +1,17 @@
+java_binary(
+    name = "HelloWorld",
+    srcs = ["HelloWorld.java"],
+    main_class = "HelloWorld",
+    deps = [":GreetingLib"],
+)
+
+java_library(
+    name = "GreetingLib",
+    srcs = ["Greeting.java"],
+)
+
+filegroup(
+    name = "all_srcs",
+    srcs = glob(["**"]) + ["InhabitedPlanets"],
+    visibility = ["//visibility:public"],
+)

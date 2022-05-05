@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+# Generate the go proto files and put them in the third_party/protobuf/bazel/ directory.
+
+set -eu
+
+info() {
+  echo "$@" >&2
+}
+
+panic() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+get_proto_go_fpath() {
+  local bazel_target=$1
+  bazel aquery "$bazel_target" --noinclude_commandline --output=text 2>/dev/null |
+    sed -En 's/^[[:space:]]*Outputs: \[(.*\.pb\.go)\].*/\1/p'
+}
+
+bazel build third_party/protobuf/bazel/...
+
+info "Cleaning up third_party/protobuf/bazel/*/*.pb.go"
+rm -f third_party/protobuf/bazel/*/*.pb.go
+
+for target_dir in third_party/protobuf/bazel/*/; do
+  target_dir=${target_dir%/}
+  target=//${target_dir%}
+  info "Generating go file for target $target and putting it in $target_dir/"
+
+  if ! generated_proto=$(get_proto_go_fpath "$target") || [[ -z $generated_proto ]]; then
+    panic "Could not find generated go file for target $target"
+  fi
+
+  cp "$generated_proto" "$target_dir/"
+  chmod +w "$target_dir"/*.pb.go
+done

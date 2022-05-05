@@ -1,0 +1,8 @@
+load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+
+go_proto_library(
+    name = "build",
+    importpath = "github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build",
+    proto = "@bazel_tools//src/main/protobuf:build_proto",
+    visibility = ["//visibility:public"],
+)
