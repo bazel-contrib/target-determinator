@@ -1,3 +1,4 @@
+load("//rules:copy_proto_output.bzl", "copy_proto_output")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 
 go_proto_library(
@@ -6,4 +7,9 @@ go_proto_library(
     proto = "@bazel_tools//src/main/protobuf:analysis_v2_proto",
     visibility = ["//visibility:public"],
     deps = ["//third_party/protobuf/bazel/build"],
+)
+
+copy_proto_output(
+    name = "copy_analysis",
+    proto_library = ":analysis",
 )

@@ -70,3 +70,5 @@ We have an extensive integration testing suite in the `tests/integration` direct
 When adding new dependencies to the Go code, please run `scripts/update-dependencies`.
 
 In general, BUILD files in this repo are maintained by `gazelle`; to regenerate tem, please run `bazel run //:gazelle`.
+
+Alongside each `go_proto_library`, there is a runnable `copy_proto_output` rule which can be used to generate the Go source for a protobuf, in case it's useful to inspect.
