@@ -1,4 +1,3 @@
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(
@@ -38,23 +37,24 @@ load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
 gazelle_dependencies()
 
 # Pull in bazel_diff for testing.
-git_repository(
+http_archive(
     name = "bazel_diff",
-    commit = "64ec2868bf58bb7b02d2e045946d3b65c3df5197",
     patch_args = ["-p1"],
     patches = ["@//:third_party/patches/bazel-diff-only-just-non-external-rules.patch"],
-    remote = "https://github.com/Tinder/bazel-diff.git",
+    sha256 = "bdc3ef2192e9aeb288506e2f348aef57bce5e4facf7374b6185ac5ccdd4a9001",
+    strip_prefix = "bazel-diff-3.5.0",
+    url = "https://github.com/Tinder/bazel-diff/archive/refs/tags/3.5.0.tar.gz",
 )
 
 RULES_JVM_EXTERNAL_TAG = "4.2"
 
-RULES_JVM_EXTERNAL_SHA = "cd1a77b7b02e8e008439ca76fd34f5b07aecb8c752961f9640dea15e9e5ba1ca"
+RULES_JVM_EXTERNAL_SHA = "2cd77de091e5376afaf9cc391c15f093ebd0105192373b334f0a855d89092ad5"
 
 http_archive(
     name = "rules_jvm_external",
     sha256 = RULES_JVM_EXTERNAL_SHA,
     strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
-    url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
+    url = "https://github.com/bazelbuild/rules_jvm_external/archive/refs/tags/%s.tar.gz" % RULES_JVM_EXTERNAL_TAG,
 )
 
 load("@rules_jvm_external//:repositories.bzl", "rules_jvm_external_deps")
@@ -102,10 +102,11 @@ load("@bazel_diff_maven//:defs.bzl", bazel_diff_pinned_maven_install = "pinned_m
 bazel_diff_pinned_maven_install()
 
 # Pull in bazel_differ for testing
-git_repository(
+http_archive(
     name = "bazel_differ",
-    commit = "e5e6ac7bc13643f7135df415fa364b8d9a6935cc",
-    remote = "https://github.com/ewhauser/bazel-differ.git",
+    sha256 = "c9265836bafcfe2925f6c44029191cda6d4c9267299cbe3a739d859da6b3a0d3",
+    strip_prefix = "bazel-differ-0.0.5",
+    url = "https://github.com/ewhauser/bazel-differ/archive/refs/tags/v0.0.5.tar.gz",
 )
 
 load("@bazel_differ//:deps.bzl", bazel_differ_deps = "go_dependencies")
