@@ -25,3 +25,13 @@ We have two other tools which solve the same problem wired up to our shared test
 * [bazel-differ](https://github.com/ewhauser/bazel-differ)
 
 Extra tools can be supported by adding a new class to `com.github.bazel_contrib.target_determinator.integration` which inherits from `Tests` and implementing the abstract `getTargets` method as per its javadoc.
+
+## How to handle differences in expectations/behaviors
+
+Each supported target determinator has its own subclass of `Tests`. `Tests` contains tests which should apply to all target determinators. Implementation-specific tests can be added to subclasses, or to separate unrelated classes.
+
+For places where more targets are returned than expected, the subclass should override the individual test method, and call the method `allowOverBuilds` with an explanation of why this is expected, before delegating to the superclass.
+
+For places where a target determinator has a different, equally valid, interpretation of what should be returned, the test method can simply be overridden.
+
+For places where behavior is not supported, or simply incorrect, the overridden test method should be annotated with an `@Ignore` annotation, with an explanation of why.

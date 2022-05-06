@@ -17,6 +17,9 @@ import org.junit.rules.TestName;
 /**
  * Tests for target determinators.
  *
+ * <p>Tests in this class should be general, applying to all reasonable possible target determinator
+ * implementations, and each implementation should have its own subclass of this one.
+ *
  * <p>This class will check out a copy of
  * https://github.com/bazel-contrib/target-determinator-testdata unless the system property
  * `target_determinator_testdata_dir` is set. If it is set, it should point at a clone of that
