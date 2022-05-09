@@ -1,0 +1,18 @@
+load("@rules_jvm_external//:defs.bzl", "artifact")
+
+java_library(
+    name = "label",
+    srcs = ["Label.java"],
+    visibility = ["//visibility:public"],
+)
+
+java_test(
+    name = "LabelTest",
+    srcs = [
+        "LabelTest.java",
+    ],
+    deps = [
+        ":label",
+        artifact("junit:junit"),
+    ],
+)

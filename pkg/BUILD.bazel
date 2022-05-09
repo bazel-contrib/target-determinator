@@ -1,0 +1,41 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "pkg",
+    srcs = [
+        "hash_cache.go",
+        "target_determinator.go",
+        "walker.go",
+    ],
+    importpath = "github.com/bazel-contrib/target-determinator/pkg",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//common",
+        "//common/sorted_set",
+        "//third_party/protobuf/bazel/analysis",
+        "//third_party/protobuf/bazel/build",
+        "@bazel_gazelle//label:go_default_library",
+        "@com_github_aristanetworks_goarista//path",
+        "@org_golang_google_protobuf//encoding/protojson",
+        "@org_golang_google_protobuf//proto",
+    ],
+)
+
+go_test(
+    name = "pkg_test",
+    srcs = [
+        "hash_cache_test.go",
+        "target_determinator_test.go",
+    ],
+    data = ["//testdata/HelloWorld:all_srcs"],
+    embed = [":pkg"],
+    rundir = ".",
+    deps = [
+        "//common",
+        "//third_party/protobuf/bazel/analysis",
+        "//third_party/protobuf/bazel/build",
+        "@bazel_gazelle//label:go_default_library",
+        "@com_github_otiai10_copy//:copy",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

@@ -1,0 +1,5 @@
+# gazelle:ignore
+# This Go package has dependencies on tools we want to invoke as part of the manual build process (e.g. for reformatting).
+# We don't let gazelle generate a BUILD file here because it would create library targets with illegal dependencies on binary targets.
+# In the future, we should make it easy to integrate these targets into Bazel build rules naturally.
+# See rdar://89049377 (Nice way to run `goimports`)

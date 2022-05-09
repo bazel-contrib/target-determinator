@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "driver_lib",
+    srcs = ["driver.go"],
+    importpath = "github.com/bazel-contrib/target-determinator/driver",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//cli:cli_lib",
+        "//pkg",
+        "//third_party/protobuf/bazel/analysis",
+        "@bazel_gazelle//label:go_default_library",
+    ],
+)
+
+go_binary(
+    name = "driver",
+    embed = [":driver_lib"],
+    visibility = ["//visibility:public"],
+)

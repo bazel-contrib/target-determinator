@@ -1,0 +1,19 @@
+commit 30020d68649461fdace4cd7e91d100a059197a1d
+Author: Daniel Wagner-Hall <dwagnerhall@apple.com>
+Date:   Thu Apr 21 18:21:46 2022 +0100
+
+    Only return rules (and not external ones)
+
+diff --git a/src/main/java/com/bazel_diff/BazelClient.java b/src/main/java/com/bazel_diff/BazelClient.java
+index cccff48..840b38a 100644
+--- a/src/main/java/com/bazel_diff/BazelClient.java
++++ b/src/main/java/com/bazel_diff/BazelClient.java
+@@ -50,7 +50,7 @@ class BazelClientImpl implements BazelClient {
+     @Override
+     public List<BazelTarget> queryAllTargets() throws IOException {
+         Instant queryStartTime = Instant.now();
+-        List<Build.Target> targets = performBazelQuery("'//external:all-targets' + '//...:all-targets'");
++        List<Build.Target> targets = performBazelQuery("kind(rule, '//...:all-targets')");
+         Instant queryEndTime = Instant.now();
+         if (verbose) {
+             long querySeconds = Duration.between(queryStartTime, queryEndTime).getSeconds();

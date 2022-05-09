@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "sorted_set",
+    srcs = ["sorted_set.go"],
+    importpath = "github.com/bazel-contrib/target-determinator/common/sorted_set",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@org_golang_x_exp//constraints",
+        "@org_golang_x_exp//slices",
+    ],
+)
+
+go_test(
+    name = "sorted_set_test",
+    srcs = ["sorted_set_test.go"],
+    deps = [
+        ":sorted_set",
+    ],
+)
