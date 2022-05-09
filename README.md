@@ -65,7 +65,7 @@ This can be used to flexibly build your own logic handling the affected targets 
 
 Contributions are very welcome!
 
-We have an extensive integration testing suite in the `tests/integration` directory which is as its own README. Please make sure any contributions are covered by a test.
+We have an extensive integration testing suite in the `tests/integration` directory which has its own README. The test suite also runs against several other target determinator implementations which are pulled in as `http_archive`s, to test compatibility. Please make sure any contributions are covered by a test.
 
 When adding new dependencies to the Go code, please run `scripts/update-dependencies`.
 
