@@ -4,7 +4,10 @@ http_archive(
     name = "bazel_gazelle",
     patch_args = ["-p1"],
     # Pull in https://github.com/bazelbuild/bazel-gazelle/pull/1227
-    patches = ["@//:third_party/patches/bazel_gazelle/1227-label-pattern-matching.patch"],
+    patches = [
+        "@//:third_party/patches/bazel_gazelle/1227-label-pattern-matching.patch",
+        "@//:third_party/patches/bazel_gazelle/0000-allow-spaces.patch",
+    ],
     sha256 = "b751f7fa79829a06778e91cb721e2bcd1e7251d9b22eb8d9ebc4993ecb3ef8dc",
     strip_prefix = "bazel-gazelle-bd319f810c16ba206a2b87422e8d328cefaded88",
     urls = [

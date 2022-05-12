@@ -1,0 +1,13 @@
+diff --git a/label/label.go b/label/label.go
+index 93c4dfd..8c9cbfd 100644
+--- a/label/label.go
++++ b/label/label.go
+@@ -67,7 +67,7 @@ var (
+ 	// This was taken from https://docs.bazel.build/versions/main/build-ref.html#name
+ 	// Note: We've manually removed space from the regex, because though these technically parse
+ 	// with Bazel (and can appear in query results), they cannot actually be used in practice.
+-	labelNameRegexp = regexp.MustCompile("^[A-Za-z0-9!%-@^_`\"#$&'()*-+,;<=>?\\[\\]{|}~/.]*$")
++	labelNameRegexp = regexp.MustCompile("^[A-Za-z0-9!%-@^_`\"#$&'()*-+,;<=>?\\[\\]{|}~/. ]*$")
+ )
+ 
+ // Parse reads a label from a string.
