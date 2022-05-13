@@ -14,8 +14,8 @@ type WalkCallback func(label.Label, []Difference, *analysis.ConfiguredTarget)
 // callback once for each target which has changed.
 // Explanation of the differences may be expensive in both time and memory to compute, so if
 // includeDifferences is set to false, the []Difference parameter to the callback will always be nil.
-func WalkAffectedTargets(context *Context, commitishBefore, commitishAfter LabelledGitRev, pattern label.Pattern, includeDifferences bool, callback WalkCallback) error {
-	beforeMetadata, afterMetadata, err := FullyProcess(context, commitishBefore, commitishAfter, pattern)
+func WalkAffectedTargets(context *Context, revBefore LabelledGitRev, pattern label.Pattern, includeDifferences bool, callback WalkCallback) error {
+	beforeMetadata, afterMetadata, err := FullyProcess(context, revBefore, pattern)
 	if err != nil {
 		return fmt.Errorf("failed to process change: %w", err)
 	}

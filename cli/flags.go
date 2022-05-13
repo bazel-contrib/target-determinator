@@ -59,7 +59,6 @@ func RegisterCommonFlags() *CommonFlags {
 type ProcessedCommonArgs struct {
 	Context        *pkg.Context
 	RevisionBefore pkg.LabelledGitRev
-	RevisionAfter  pkg.LabelledGitRev
 	TargetPattern  gazelle_label.Pattern
 }
 
@@ -79,10 +78,10 @@ func ProcessCommonArgs(commonFlags *CommonFlags, targetPatternFlag *string) (*Pr
 	}
 
 	context := &pkg.Context{
-		OriginalWorkspacePath: workingDirectory,
-		OriginalRevision:      afterRev,
-		BazelPath:             *commonFlags.BazelPath,
-		IgnoredFiles:          *commonFlags.IgnoredFiles,
+		WorkspacePath:    workingDirectory,
+		OriginalRevision: afterRev,
+		BazelPath:        *commonFlags.BazelPath,
+		IgnoredFiles:     *commonFlags.IgnoredFiles,
 	}
 
 	positional := flag.Args()
@@ -102,7 +101,6 @@ func ProcessCommonArgs(commonFlags *CommonFlags, targetPatternFlag *string) (*Pr
 	return &ProcessedCommonArgs{
 		Context:        context,
 		RevisionBefore: beforeRev,
-		RevisionAfter:  afterRev,
 		TargetPattern:  targetPattern,
 	}, nil
 }

@@ -353,11 +353,10 @@ public abstract class Tests {
   }
 
   @Test
-  public void failForUncleanRepository() throws IOException {
+  public void succeedForUncleanRepository() throws IOException {
     Files.createFile(testDir.resolve("untracked-file"));
 
-    expectFailure();
-    doTest(Commits.TWO_TESTS, Commits.EXPLICIT_DEFAULT_VALUE, Set.of("//..."));
+    doTest(Commits.TWO_TESTS, Commits.HAS_JVM_FLAGS, Set.of("//java/example:ExampleTest"));
   }
 
   @Test
@@ -375,16 +374,14 @@ public abstract class Tests {
   }
 
   @Test
-  public void failForUncleanSubmodule() throws Exception {
+  public void succeedForUncleanSubmodule() throws Exception {
     gitCheckout(Commits.SUBMODULE_CHANGE_DIRECTORY);
 
     Files.createFile(testDir.resolve("demo-submodule-2").resolve("untracked-file"));
 
-    expectFailure();
-    doTest(
-        Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
-        Commits.SUBMODULE_CHANGE_DIRECTORY,
-        Set.of("//..."));
+    doTest(Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
+            Commits.SUBMODULE_CHANGE_DIRECTORY,
+            Set.of("//demo-submodule-2:submodule_simple"));
   }
 
   @Test
