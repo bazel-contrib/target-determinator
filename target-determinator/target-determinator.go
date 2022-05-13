@@ -60,7 +60,6 @@ func main() {
 
 	if err := pkg.WalkAffectedTargets(config.Context,
 		config.RevisionBefore,
-		config.RevisionAfter,
 		config.TargetPattern,
 		config.Verbose,
 		callback); err != nil {
@@ -84,7 +83,6 @@ func parseFlags() (*config, error) {
 
 	return &config{
 		RevisionBefore: commonArgs.RevisionBefore,
-		RevisionAfter:  commonArgs.RevisionAfter,
 		Context:        commonArgs.Context,
 		Verbose:        *verbose,
 		TargetPattern:  commonArgs.TargetPattern,

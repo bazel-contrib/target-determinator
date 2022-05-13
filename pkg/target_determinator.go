@@ -33,6 +33,9 @@ type LabelledGitRev struct {
 	Sha string
 }
 
+// NoLabelledGitRev represents a null value for LabelledGitRev.
+var NoLabelledGitRev LabelledGitRev
+
 // NewLabelledGitRev ensures that the git sha is resolved as soon as the object is created, otherwise we might encounter
 // undesirable behaviors when switching to other revisions e.g. if using "HEAD".
 func NewLabelledGitRev(workspacePath string, revision string, label string) (LabelledGitRev, error) {
@@ -68,37 +71,29 @@ func (l LabelledGitRev) String() string {
 }
 
 type Context struct {
-	// OriginalWorkspacePath is the absolute path to the root of the project's Bazel Workspace directory (which is
+	// WorkspacePath is the absolute path to the root of the project's Bazel Workspace directory (which is
 	// assumed to be in a git repository, but is not assumed to be the root of a git repository).
-	OriginalWorkspacePath string
+	WorkspacePath string
 	// OriginalRevision is the git revision the repo was in when initializing the context.
 	OriginalRevision LabelledGitRev
 	// BazelPath is the path (or basename to be looked up in $PATH) of the Bazel to invoke.
 	BazelPath string
-	// CurrentWorkspacePath is the absolute path to the root of the Bazel Workspace directory we are currently
-	// processing. It may be different from OriginalWorkspacePath at some point if creation of a git worktree is needed.
-	CurrentWorkspacePath string
 	// IgnoredFiles represents files that should be ignored for git operations.
 	IgnoredFiles []common.RelPath
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
-func FullyProcess(context *Context, revBefore, revAfter LabelledGitRev, pattern label.Pattern) (*QueryResults, *QueryResults, error) {
-	err := EnsurePreconditions(context)
+func FullyProcess(context *Context, revBefore LabelledGitRev, pattern label.Pattern) (*QueryResults, *QueryResults, error) {
+	log.Printf("Processing revision %s", revBefore)
+	queryInfoBefore, err := fullyProcessRevision(context, revBefore, pattern)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// At this point, it's mostly safe to run `git clean` because we know that the git repo was clean in the first place.
-	// We still need to check that we did end up back on the original commit.
-	defer Cleanup(context)
-
-	queryInfoBefore, newContext, err := fullyProcessRevision(context, revBefore, pattern)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	queryInfoAfter, _, err := fullyProcessRevision(newContext, revAfter, pattern)
+	// At this point, we assume that the workspace is in its pristine stage. Hence, for the "after"
+	// revision, we do not need to check out anything.
+	log.Printf("Processing revision %s", context.OriginalRevision)
+	queryInfoAfter, err := fullyProcessRevision(context, NoLabelledGitRev, pattern)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -106,92 +101,71 @@ func FullyProcess(context *Context, revBefore, revAfter LabelledGitRev, pattern 
 	return queryInfoBefore, queryInfoAfter, nil
 }
 
-func fullyProcessRevision(context *Context, rev LabelledGitRev, pattern label.Pattern) (*QueryResults, *Context, error) {
-	log.Printf("Checking out: %s", rev)
-	queryInfo, newContext, loadMetadataCleanup, err := LoadIncompleteMetadata(context, rev, pattern)
+func fullyProcessRevision(context *Context, rev LabelledGitRev, pattern label.Pattern) (queryInfo *QueryResults, err error) {
+	defer func() {
+		innerErr := gitCheckout(context.WorkspacePath, context.OriginalRevision)
+		if innerErr != nil && err == nil {
+			err = fmt.Errorf("failed to check out original commit during cleanup: %v", err)
+		}
+	}()
+	queryInfo, loadMetadataCleanup, err := LoadIncompleteMetadata(context, rev, pattern)
 	defer loadMetadataCleanup()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load metadata at %s: %w", rev, err)
+		return nil, fmt.Errorf("failed to load metadata at %s: %w", rev, err)
 	}
 
-	log.Printf("Hashing targets for %s", rev)
+	log.Println("Hashing targets")
 	if err := queryInfo.PrefillCache(); err != nil {
-		return nil, nil, fmt.Errorf("failed to calculate hashes at %s: %w", rev, err)
+		return nil, fmt.Errorf("failed to calculate hashes at %s: %w", rev, err)
 	}
-	return queryInfo, newContext, nil
-}
-
-func EnsurePreconditions(context *Context) error {
-	isClean, err := EnsureGitRepositoryClean(context.OriginalWorkspacePath, context.IgnoredFiles)
-	if err != nil {
-		return fmt.Errorf("failed to check whether the repository is clean: %w", err)
-	}
-	if !isClean {
-		return fmt.Errorf("current git working copy is not clean")
-	}
-	return nil
-}
-
-func Cleanup(context *Context) {
-	finalSha, err := GitRevParse(context.OriginalWorkspacePath, "HEAD", false)
-	if err != nil {
-		log.Printf("failed to parse 'HEAD' git revision: %v", err)
-	}
-	if finalSha != context.OriginalRevision.Sha {
-		log.Printf("error: the final git sha (%v) does not match the original git sha (%v). Skipping git clean.",
-			finalSha, context.OriginalRevision.Sha)
-		return
-	}
-	log.Printf("Cleaning up")
-	err = GitClean(context.OriginalWorkspacePath, context.IgnoredFiles)
-	if err != nil {
-		log.Printf("Warning: failed to run `git clean` on project workspace: %v.", err)
-	}
+	return queryInfo, nil
 }
 
 // LoadIncompleteMetadata loads the metadata about, but not hashes of, targets into a QueryResults.
 // The (transitive) dependencies of the passed pattern will be loaded. For all targets, pass the
 // pattern `//...`.
 //
-// This function returns a non-nil callback to clean up the worktree if it was created.
-func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.Pattern) (*QueryResults, *Context, func(), error) {
-	newContext := Context{
-		OriginalWorkspacePath: context.OriginalWorkspacePath,
-		OriginalRevision:      context.OriginalRevision,
-		BazelPath:             context.BazelPath,
-		CurrentWorkspacePath:  context.OriginalWorkspacePath,
-		IgnoredFiles:          context.IgnoredFiles,
-	}
+// It may change the git revision of the workspace to rev, in which case it is the caller's
+// responsibility to check out the original commit.
+//
+// It returns a non-nil callback to clean up the worktree if it was created.
+func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.Pattern) (*QueryResults, func(), error) {
+	workspacePath := context.WorkspacePath
 	cleanupFunc := func() {}
 
-	// This may return a different workspace path to ensure we don't destroy any local data.
-	newWorkspacePath, err2 := gitSafeCheckout(context.OriginalWorkspacePath, rev, context.IgnoredFiles)
-	if err2 != nil {
-		return nil, nil, cleanupFunc, fmt.Errorf("failed to checkout %s in %v: %w", rev, context.OriginalWorkspacePath, err2)
-	}
+	if rev != NoLabelledGitRev {
+		// This may return a new workspace path to ensure we don't destroy any local data.
+		newWorkspacePath, err2 := gitSafeCheckout(context.WorkspacePath, rev, context.IgnoredFiles)
 
-	// A worktree was created by gitSafeCheckout(). Use it and set the cleanup callback.
-	if newWorkspacePath != "" {
-		cleanupFunc = func() {
-			err := os.RemoveAll(newWorkspacePath)
-			if err != nil {
-				log.Printf("Warning: failed to clean up temporary git worktree at %s: %v.", newWorkspacePath, err)
+		// A worktree was created by gitSafeCheckout(). Use it and set the cleanup callback even
+		// if gitSafeCheckout returns an error.
+		if newWorkspacePath != "" {
+			cleanupFunc = func() {
+				err := os.RemoveAll(newWorkspacePath)
+				if err != nil {
+					err = fmt.Errorf("failed to clean up temporary git worktree at %s: %v", newWorkspacePath, err)
+				}
 			}
+			workspacePath = newWorkspacePath
 		}
-		newContext.CurrentWorkspacePath = newWorkspacePath
+
+		if err2 != nil {
+			return nil, cleanupFunc, fmt.Errorf("failed to checkout %s in %v: %w", rev, context.WorkspacePath, err2)
+		}
+
 	}
 
 	// Clear analysis cache before each query, as cquery configurations leak across invocations.
 	// See https://github.com/bazelbuild/bazel/issues/14725
-	if err := clearAnalysisCache(&newContext); err != nil {
-		return nil, nil, cleanupFunc, err
+	if err := clearAnalysisCache(context.BazelPath, workspacePath); err != nil {
+		return nil, cleanupFunc, err
 	}
 
-	queryInfo, err := doQueryDeps(&newContext, pattern)
+	queryInfo, err := doQueryDeps(context.BazelPath, workspacePath, pattern)
 	if err != nil {
-		return nil, nil, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, newWorkspacePath, err)
+		return nil, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, workspacePath, err)
 	}
-	return queryInfo, &newContext, cleanupFunc, nil
+	return queryInfo, cleanupFunc, nil
 }
 
 // stringSliceContainsStartingWith returns whether slice contains items that are a path prefix of element.
@@ -271,70 +245,82 @@ func gitStatus(workingDirectory string) ([]GitFileStatus, error) {
 }
 
 // gitSafeCheckout checks out a sha and its recursive submodules in a repository.
-// If there are any untracked files after the checkout, a worktree is created to avoid deleting user's files and the
-// function returns the path to the new worktree, otherwise nil is returned.
 //
-// The caller has the responsibility to clean up the worktree.
+// Sometimes a worktree is created to avoid altering the repository, in which case the
+// function returns the path to the new worktree, otherwise an empty string is returned.
 //
-// Notes:
-// - even if the repository is clean before the checkout, there is still a possibility that file `foo` is
-// ignored in the original commit but not in the target commit (e.g. if it was recently added to the `.gitignore`).
-// - the repository might also be unclean after a checkout if a submodule was moved or removed between the current and
-// target commit.
+// A new worktree is created in the following cases:
+// - the original worktree is unclean (non-ignored untracked files or tracked local changes).
+// - upon checking out the new revision, the worktree is unclean. This can happen when a submodule
+//   was moved or removed between the current and target commit, or when the contents of the
+//  .gitignore file changes.
+//
+// When a worktree is created, the repository present in workingDirectory may or may not have
+// the rev revision checked out.
+//
+// When applicable, the caller is responsible for cleaning up the newly created worktree.
 func gitSafeCheckout(workingDirectory string, rev LabelledGitRev, ignoredFiles []common.RelPath) (string, error) {
-	gitCmd := exec.Command("git", "checkout", rev.Revision)
-	gitCmd.Dir = workingDirectory
-	if output, err := gitCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to check out %s: %w. Output: %v", rev, err, string(output))
-	}
-
-	newRepositoryPath := ""
-	isClean, err := EnsureGitRepositoryClean(workingDirectory, ignoredFiles)
+	useGitWorktree := false
+	isPreCheckoutClean, err := EnsureGitRepositoryClean(workingDirectory, ignoredFiles)
 	if err != nil {
-		return "", fmt.Errorf("failed to check the repository is clean: %w", err)
+		return "", fmt.Errorf("failed to check whether the repository is clean: %w", err)
 	}
-	if !isClean {
-		tempDir, err := os.MkdirTemp("", "td-worktree-*")
+	if !isPreCheckoutClean {
+		log.Printf("Working tree is unclean, creating git worktree. This is slow! " +
+			"You can avoid this by committing local changes and ignoring untracked files.")
+		useGitWorktree = true
+	} else {
+		if err := gitCheckout(workingDirectory, rev); err != nil {
+			return "", err
+		}
+
+		isPostCheckoutClean, err := EnsureGitRepositoryClean(workingDirectory, ignoredFiles)
+		if err != nil {
+			return "", fmt.Errorf("failed to check whether the repository is clean: %w", err)
+		}
+		if !isPostCheckoutClean {
+			log.Printf("Detected unclean repository after checkout (likely due to submodule or " +
+				".gitignore changes). Creating git worktree to leave original repository pristine.")
+			useGitWorktree = true
+		}
+	}
+	newRepositoryPath := ""
+	if useGitWorktree {
+		newRepositoryPath, err = os.MkdirTemp("", "td-worktree-*")
 		if err != nil {
 			return "", fmt.Errorf("failed to create temporary directory for git worktree: %w", err)
 		}
 
-		if err = gitCreateWorktree(workingDirectory, tempDir); err != nil {
-			return "", fmt.Errorf("failed to create temporary git worktree: %w", err)
+		if err = gitCreateWorktree(workingDirectory, newRepositoryPath, rev.Sha); err != nil {
+			return newRepositoryPath, fmt.Errorf("failed to create temporary git worktree: %w", err)
 		}
-		workingDirectory = tempDir
-		newRepositoryPath = tempDir
+		log.Printf("Created git worktree in %v.", newRepositoryPath)
+		workingDirectory = newRepositoryPath
 	}
 
-	gitCmd = exec.Command("git", "submodule", "update", "--init", "--recursive")
+	gitCmd := exec.Command("git", "submodule", "update", "--init", "--recursive")
 	gitCmd.Dir = workingDirectory
 	if output, err := gitCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to update submodules during checkout %s: %w. Output: %v", rev, err, string(output))
+		return newRepositoryPath, fmt.Errorf("failed to update submodules during checkout %s: %w. Output: %v", rev, err, string(output))
 	}
 	return newRepositoryPath, nil
 }
 
-// Create a detached worktree in targetDirectory from the repo present in workingDirectory.
-func gitCreateWorktree(workingDirectory string, targetDirectory string) error {
-	gitCmd := exec.Command("git", "worktree", "add", "--detach", targetDirectory)
+func gitCheckout(workingDirectory string, rev LabelledGitRev) error {
+	gitCmd := exec.Command("git", "checkout", rev.Revision)
 	gitCmd.Dir = workingDirectory
 	if output, err := gitCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to add temporary git worktree: %w. Output: %v", err, string(output))
+		return fmt.Errorf("failed to check out %s: %w. Output: %v", rev, err, string(output))
 	}
 	return nil
 }
 
-// GitClean cleans the repository. This does not include ignored files.
-func GitClean(workingDirectory string, ignoredFiles []common.RelPath) error {
-	args := []string{"clean", "-ffd"}
-	for _, ignoredFile := range ignoredFiles {
-		args = append(args, "--exclude", fmt.Sprintf("/%s", ignoredFile.String()))
-	}
-	gitCmd := exec.Command("git", args...)
-
+// Create a detached worktree in targetDirectory from the repo present in workingDirectory.
+func gitCreateWorktree(workingDirectory string, targetDirectory string, rev string) error {
+	gitCmd := exec.Command("git", "worktree", "add", "--detach", targetDirectory, rev)
 	gitCmd.Dir = workingDirectory
 	if output, err := gitCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to clean git repository: %w. Output: %v", err, string(output))
+		return fmt.Errorf("failed to add temporary git worktree: %w. Output: %v", err, string(output))
 	}
 	return nil
 }
@@ -417,15 +403,15 @@ type LabelAndConfiguration struct {
 
 var targetConfigRegexp = regexp.MustCompile("^([^ ]+) \\(([0-9a-fA-Z]*)\\)$")
 
-func clearAnalysisCache(context *Context) error {
+func clearAnalysisCache(bazelPath string, workspacePath string) error {
 	// Discard the analysis cache:
 	{
 		var stderr bytes.Buffer
-		cmd := exec.Command(context.BazelPath, "build", "--discard_analysis_cache")
-		cmd.Dir = context.CurrentWorkspacePath
+		cmd := exec.Command(bazelPath, "build", "--discard_analysis_cache")
+		cmd.Dir = workspacePath
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr:\n%v", context.CurrentWorkspacePath, err, stderr.String())
+			return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr:\n%v", workspacePath, err, stderr.String())
 		}
 	}
 
@@ -433,19 +419,19 @@ func clearAnalysisCache(context *Context) error {
 	// Perform a no-op build to flush any in-build state from the previous one.
 	{
 		var stderr bytes.Buffer
-		cmd := exec.Command(context.BazelPath, "build")
-		cmd.Dir = context.CurrentWorkspacePath
+		cmd := exec.Command(bazelPath, "build")
+		cmd.Dir = workspacePath
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to run no-op build after discarding Bazel analysis cache in %v: %w. Stderr:\n%v", context.CurrentWorkspacePath, err, stderr.String())
+			return fmt.Errorf("failed to run no-op build after discarding Bazel analysis cache in %v: %w. Stderr:\n%v", workspacePath, err, stderr.String())
 		}
 	}
 	return nil
 }
 
-func doQueryDeps(context *Context, pattern label.Pattern) (*QueryResults, error) {
+func doQueryDeps(bazelPath string, workspacePath string, pattern label.Pattern) (*QueryResults, error) {
 	depsPattern := fmt.Sprintf("deps(%s)", pattern.String())
-	transitiveResult, err := runToCqueryResult(context, depsPattern)
+	transitiveResult, err := runToCqueryResult(bazelPath, workspacePath, depsPattern)
 	if err != nil {
 		return nil, fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
 	}
@@ -455,7 +441,7 @@ func doQueryDeps(context *Context, pattern label.Pattern) (*QueryResults, error)
 		return nil, fmt.Errorf("failed to parse cquery result: %w", err)
 	}
 
-	matchingTargetResults, err := runToCqueryResult(context, pattern.String())
+	matchingTargetResults, err := runToCqueryResult(bazelPath, workspacePath, pattern.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
@@ -492,12 +478,12 @@ func doQueryDeps(context *Context, pattern label.Pattern) (*QueryResults, error)
 	return queryResults, nil
 }
 
-func runToCqueryResult(context *Context, pattern string) (*analysis.CqueryResult, error) {
+func runToCqueryResult(bazelPath string, workspacePath string, pattern string) (*analysis.CqueryResult, error) {
 	log.Printf("Running cquery on %s", pattern)
 	var output bytes.Buffer
 	var stderr bytes.Buffer
-	queryCmd := exec.Command(context.BazelPath, "cquery", "--output=proto", pattern)
-	queryCmd.Dir = context.CurrentWorkspacePath
+	queryCmd := exec.Command(bazelPath, "cquery", "--output=proto", pattern)
+	queryCmd.Dir = workspacePath
 	queryCmd.Stdout = &output
 	queryCmd.Stderr = &stderr
 	if err := queryCmd.Run(); err != nil {

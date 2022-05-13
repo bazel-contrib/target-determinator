@@ -132,19 +132,6 @@ public class BazelDifferIntegrationTest extends Tests {
   // Different behaviour with respect to errors
 
   @Override
-  public void failForUncleanRepository() {
-    try {
-      Files.createFile(testDir.resolve("untracked-file"));
-    } catch (IOException e) {
-      fail(e.getMessage());
-    }
-    expectFailure();
-
-    // bazel-differ does not return any targets on failure.
-    doTest(Commits.TWO_TESTS, Commits.EXPLICIT_DEFAULT_VALUE, Set.of("//java/example:ExampleTest"));
-  }
-
-  @Override
   public void reducingVisibilityOnDependencyAffectsTarget() {
     expectFailure();
     doTest(
@@ -158,6 +145,10 @@ public class BazelDifferIntegrationTest extends Tests {
 
   @Override
   @Ignore
+  public void addTrivialSubmodule() {}
+
+  @Override
+  @Ignore
   public void changeSubmodulePath() {}
 
   @Override
@@ -166,7 +157,7 @@ public class BazelDifferIntegrationTest extends Tests {
 
   @Override
   @Ignore
-  public void failForUncleanSubmodule() {}
+  public void succeedForUncleanSubmodule() {}
 
   // Misc
 

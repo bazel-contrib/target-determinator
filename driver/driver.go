@@ -26,7 +26,6 @@ import (
 
 type config struct {
 	RevisionBefore pkg.LabelledGitRev
-	RevisionAfter  pkg.LabelledGitRev
 	Context        *pkg.Context
 	// One of "run" or "skip".
 	ManualTestMode string
@@ -62,7 +61,6 @@ func main() {
 
 	if err := pkg.WalkAffectedTargets(config.Context,
 		config.RevisionBefore,
-		config.RevisionAfter,
 		config.TargetPattern,
 		false,
 		callback); err != nil {
@@ -97,7 +95,7 @@ func main() {
 
 	log.Printf("Running %s on %d targets", commandVerb, len(targets))
 	cmd := exec.Command(config.Context.BazelPath, commandVerb, "--target_pattern_file", targetPatternFile.Name())
-	cmd.Dir = config.Context.OriginalWorkspacePath
+	cmd.Dir = config.Context.WorkspacePath
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -136,7 +134,6 @@ func parseFlags() (*config, error) {
 
 	return &config{
 		RevisionBefore: commonArgs.RevisionBefore,
-		RevisionAfter:  commonArgs.RevisionAfter,
 		Context:        commonArgs.Context,
 		ManualTestMode: *manualTestMode,
 		TargetPattern:  commonArgs.TargetPattern,
