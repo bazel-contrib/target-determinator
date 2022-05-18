@@ -459,6 +459,7 @@ public abstract class Tests {
     }
 
     Set<Label> targets = null;
+    boolean succeeded = true;
     try {
       targets = getTargets(commitBefore, commitAfter);
     } catch (TargetComputationErrorException e) {
@@ -467,6 +468,10 @@ public abstract class Tests {
       } else {
         fail(e.getMessage());
       }
+      succeeded = false;
+    }
+    if (succeeded && expectFailure) {
+        fail("Expected failure running command, but got zero exit status. Output: " + targets.toString());
     }
 
     Util.assertTargetsMatch(
