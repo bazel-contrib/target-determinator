@@ -38,24 +38,22 @@ public class TargetDeterminator {
     processBuilder.environment().put("PATH", System.getenv("PATH"));
     try {
       Process process = processBuilder.start();
-      Builder<Label> builder = new Builder<>();
-      for (String line :
-          new String(ByteStreams.toByteArray(process.getInputStream()), StandardCharsets.UTF_8)
-              .split("\n")) {
-        if (!line.isEmpty()) {
-          builder.add(Label.normalize(line));
-        }
-      }
-      final ImmutableSet<Label> targets = builder.build();
+      final String output = new String(ByteStreams.toByteArray(process.getInputStream()), StandardCharsets.UTF_8);
       final int returnCode = process.waitFor();
       if (returnCode != 0) {
         throw new TargetComputationErrorException(
             String.format(
                 "Expected exit code 0 when running %s but got: %d",
                 Joiner.on(" ").join(argv), returnCode),
-            targets);
+            output);
       }
-      return targets;
+      Builder<Label> targetBuilder = new Builder<>();
+      for (String line : output.split("\n")) {
+        if (!line.isEmpty()) {
+          targetBuilder.add(Label.normalize(line));
+        }
+      }
+      return targetBuilder.build();
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
     }

@@ -1,20 +1,19 @@
 package com.github.bazel_contrib.target_determinator.integration;
 
-import com.github.bazel_contrib.target_determinator.label.Label;
-import com.google.common.collect.ImmutableSet;
-
 /** TargetComputationErrorException represents an error when computing targets. */
 class TargetComputationErrorException extends Exception {
 
-  private final ImmutableSet<Label> targets;
+  private final String output;
 
-  /** getTargets returns any targets which were output to stdout. */
-  public ImmutableSet<Label> getTargets() {
-    return targets;
+  /**
+   * getOutput returns the stdout of the failed command.
+   */
+  public String getOutput() {
+    return output;
   }
 
-  public TargetComputationErrorException(String errorMessage, ImmutableSet<Label> targets) {
+  public TargetComputationErrorException(String errorMessage, String output) {
     super(errorMessage);
-    this.targets = targets;
+    this.output = output;
   }
 }
