@@ -1,10 +1,7 @@
 package com.github.bazel_contrib.target_determinator.integration;
 
-import static junit.framework.TestCase.fail;
-
 import com.github.bazel_contrib.target_determinator.label.Label;
 import com.google.common.base.Joiner;
-import com.google.common.collect.ImmutableSet;
 import java.io.File;
 import java.io.IOException;
 import java.lang.ProcessBuilder.Redirect;
@@ -67,7 +64,7 @@ public class BazelDiffIntegrationTest extends Tests {
       if (processBuilder.start().waitFor() != 0) {
         throw new TargetComputationErrorException(
             String.format("Expected exit code 0 when running %s", Joiner.on(" ").join(argv)),
-            ImmutableSet.of());
+            "");
       }
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
@@ -100,18 +97,6 @@ public class BazelDiffIntegrationTest extends Tests {
   @Ignore("bazel-diff doesn't inspect configurations.")
   public void changingHostConfigurationDoesNotAffectTargetConfiguration() {}
 
-  // Different behaviour with respect to errors
-
-  @Override
-  public void reducingVisibilityOnDependencyAffectsTarget() {
-    expectFailure();
-    doTest(
-        Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
-        Commits.REDUCE_DEPENDENCY_VISIBILITY,
-        // bazel-diff doesn't return any targets on failure.
-        Set.of());
-  }
-
   // Submodules
 
   @Override
@@ -133,13 +118,13 @@ public class BazelDiffIntegrationTest extends Tests {
   public void testRelativeRevisions() {}
 
   @Override
-  public void explicitlySpecifyingDefaultValueDoesNotTrigger_native() {
+  public void explicitlySpecifyingDefaultValueDoesNotTrigger_native() throws Exception {
     allowOverBuilds("bazel-diff isn't aware of attribute defaults.");
     super.explicitlySpecifyingDefaultValueDoesNotTrigger_native();
   }
 
   @Override
-  public void refactoringStarlarkRuleIsNoOp() {
+  public void refactoringStarlarkRuleIsNoOp() throws Exception {
     allowOverBuilds(
         "Rule implementation attr factors in hashes of entire transitively loaded bzl files, rather"
             + " than anything more granular or processed");

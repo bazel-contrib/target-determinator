@@ -1,10 +1,7 @@
 package com.github.bazel_contrib.target_determinator.integration;
 
-import static junit.framework.TestCase.fail;
-
 import com.github.bazel_contrib.target_determinator.label.Label;
 import com.google.common.base.Joiner;
-import com.google.common.collect.ImmutableSet;
 import java.io.File;
 import java.io.IOException;
 import java.lang.ProcessBuilder.Redirect;
@@ -60,7 +57,7 @@ public class BazelDifferIntegrationTest extends Tests {
       if (processBuilder.start().waitFor() != 0) {
         throw new TargetComputationErrorException(
             String.format("Expected exit code 0 when running %s", Joiner.on(" ").join(argv)),
-            ImmutableSet.of());
+            "");
       }
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
@@ -96,25 +93,25 @@ public class BazelDifferIntegrationTest extends Tests {
   // Returning things in //external
 
   @Override
-  public void unconsumedIndirectWorkspaceChangeIsNoOp() {
+  public void unconsumedIndirectWorkspaceChangeIsNoOp() throws Exception {
     allowOverBuilds("bazel-differ returns targets in //external as changed");
     super.unconsumedIndirectWorkspaceChangeIsNoOp();
   }
 
   @Override
-  public void movingStarlarkRuleToExternalRepoIsNoOp() {
+  public void movingStarlarkRuleToExternalRepoIsNoOp() throws Exception {
     allowOverBuilds("bazel-differ returns targets in //external as changed");
     super.movingStarlarkRuleToExternalRepoIsNoOp();
   }
 
   @Override
-  public void modifyingRuleViaWorkspaceFile() {
+  public void modifyingRuleViaWorkspaceFile() throws Exception {
     allowOverBuilds("bazel-differ returns targets in //external as changed");
     super.modifyingRuleViaWorkspaceFile();
   }
 
   @Override
-  public void changingFileLoadedByWorkspaceTriggersTargets() {
+  public void changingFileLoadedByWorkspaceTriggersTargets() throws Exception {
     allowOverBuilds("bazel-differ returns targets in //external as changed");
     super.changingFileLoadedByWorkspaceTriggersTargets();
   }
@@ -128,18 +125,6 @@ public class BazelDifferIntegrationTest extends Tests {
   @Override
   @Ignore("bazel-differ doesn't seem to track bazel versions.")
   public void changedBazelVersion_starlark() {}
-
-  // Different behaviour with respect to errors
-
-  @Override
-  public void reducingVisibilityOnDependencyAffectsTarget() {
-    expectFailure();
-    doTest(
-        Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
-        Commits.REDUCE_DEPENDENCY_VISIBILITY,
-        // bazel-differ doesn't return any targets on failure.
-        Set.of());
-  }
 
   // Submodules
 
@@ -166,13 +151,13 @@ public class BazelDifferIntegrationTest extends Tests {
   public void testRelativeRevisions() {}
 
   @Override
-  public void explicitlySpecifyingDefaultValueDoesNotTrigger_native() {
+  public void explicitlySpecifyingDefaultValueDoesNotTrigger_native() throws Exception {
     allowOverBuilds("bazel-differ isn't aware of attribute defaults.");
     super.explicitlySpecifyingDefaultValueDoesNotTrigger_native();
   }
 
   @Override
-  public void refactoringStarlarkRuleIsNoOp() {
+  public void refactoringStarlarkRuleIsNoOp() throws Exception {
     allowOverBuilds(
         "Rule implementation attr factors in hashes of entire transitively loaded bzl files, rather"
             + " than anything more granular or processed");

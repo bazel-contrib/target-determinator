@@ -21,19 +21,24 @@ import (
 	gazelle_label "github.com/bazelbuild/bazel-gazelle/label"
 )
 
+type targetDeterminatorFlags struct {
+	commonFlags    *cli.CommonFlags
+	revisionBefore string
+	verbose        bool
+}
+
 type config struct {
-	RevisionBefore pkg.LabelledGitRev
-	RevisionAfter  pkg.LabelledGitRev
 	Context        *pkg.Context
-	Verbose        bool
+	RevisionBefore pkg.LabelledGitRev
 	TargetPattern  gazelle_label.Pattern
+	Verbose        bool
 }
 
 func main() {
 	start := time.Now()
 	defer func() { log.Printf("Finished after %v", time.Since(start)) }()
 
-	config, err := parseFlags()
+	flags, err := parseFlags()
 	if err != nil {
 		fmt.Fprintf(flag.CommandLine.Output(), "Failed to parse flags: %v\n", err)
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
@@ -42,6 +47,13 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Optional flags:\n")
 		flag.PrintDefaults()
 		os.Exit(1)
+	}
+
+	// Print something on stdout that will make bazel fail when passed as a target.
+	config, err := resolveConfig(*flags)
+	if err != nil {
+		fmt.Println("Target Determinator invocation Error")
+		log.Fatalf("Error during preprocessing: %v", err)
 	}
 
 	callback := func(label gazelle_label.Label, differences []pkg.Difference, configuredTarget *analysis.ConfiguredTarget) {
@@ -63,28 +75,37 @@ func main() {
 		config.TargetPattern,
 		config.Verbose,
 		callback); err != nil {
-		// Print all targets to stdout in case the caller doesn't check for exit codes (e.g. using pipes in the shell).
-		fmt.Println(config.TargetPattern.String())
+		// Print something on stdout that will make bazel fail when passed as a target.
+		fmt.Println("Target Determinator invocation Error")
 		log.Fatal(err)
 	}
 }
 
-func parseFlags() (*config, error) {
-	commonFlags := cli.RegisterCommonFlags()
-	targetPatternFlag := flag.String("target-pattern", "//...", "Target pattern to diff.")
-	verbose := flag.Bool("verbose", false, "Whether to explain (messily) why each target is getting run")
+func parseFlags() (*targetDeterminatorFlags, error) {
+	var flags targetDeterminatorFlags
+	flags.commonFlags = cli.RegisterCommonFlags()
+	flag.BoolVar(&flags.verbose, "verbose", false, "Whether to explain (messily) why each target is getting run")
 
 	flag.Parse()
 
-	commonArgs, err := cli.ProcessCommonArgs(commonFlags, targetPatternFlag)
+	var err error
+	flags.revisionBefore, err = cli.ValidateCommonFlags()
+	if err != nil {
+		return nil, err
+	}
+	return &flags, nil
+}
+
+func resolveConfig(flags targetDeterminatorFlags) (*config, error) {
+	commonArgs, err := cli.ResolveCommonConfig(flags.commonFlags, flags.revisionBefore)
 	if err != nil {
 		return nil, err
 	}
 
 	return &config{
-		RevisionBefore: commonArgs.RevisionBefore,
 		Context:        commonArgs.Context,
-		Verbose:        *verbose,
+		RevisionBefore: commonArgs.RevisionBefore,
 		TargetPattern:  commonArgs.TargetPattern,
+		Verbose:        flags.verbose,
 	}, nil
 }

@@ -24,16 +24,22 @@ import (
 	gazelle_label "github.com/bazelbuild/bazel-gazelle/label"
 )
 
+type driverFlags struct {
+	commonFlags    *cli.CommonFlags
+	revisionBefore string
+	manualTestMode string
+}
+
 type config struct {
-	RevisionBefore pkg.LabelledGitRev
 	Context        *pkg.Context
+	RevisionBefore pkg.LabelledGitRev
+	TargetPattern  gazelle_label.Pattern
 	// One of "run" or "skip".
 	ManualTestMode string
-	TargetPattern  gazelle_label.Pattern
 }
 
 func main() {
-	config, err := parseFlags()
+	flags, err := parseFlags()
 	if err != nil {
 		fmt.Fprintf(flag.CommandLine.Output(), "Failed to parse flags: %v\n", err)
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
@@ -42,6 +48,11 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Optional flags:\n")
 		flag.PrintDefaults()
 		os.Exit(1)
+	}
+
+	config, err := resolveConfig(*flags)
+	if err != nil {
+		log.Fatalf("Error during preprocessing: %v", err)
 	}
 
 	var targets []gazelle_label.Label
@@ -116,26 +127,36 @@ func isTaggedManual(target *analysis.ConfiguredTarget) bool {
 	return false
 }
 
-func parseFlags() (*config, error) {
-	commonFlags := cli.RegisterCommonFlags()
-	manualTestMode := flag.String("manual-test-mode", "skip", "How to handle affected tests tagged manual. Possible values: run|skip")
-	targetPatternFlag := flag.String("target-pattern", "//...", "Target pattern to consider.")
+func parseFlags() (*driverFlags, error) {
+	var flags driverFlags
+	flags.commonFlags = cli.RegisterCommonFlags()
+	flag.StringVar(&flags.manualTestMode, "manual-test-mode", "skip", "How to handle affected tests tagged manual. Possible values: run|skip")
 
 	flag.Parse()
 
-	commonArgs, err := cli.ProcessCommonArgs(commonFlags, targetPatternFlag)
+	if flags.manualTestMode != "run" && flags.manualTestMode != "skip" {
+		return nil, fmt.Errorf("unexpected value for flag -manual-test-mode - allowed values: run|skip, saw: %s", flags.manualTestMode)
+	}
+
+	var err error
+	flags.revisionBefore, err = cli.ValidateCommonFlags()
 	if err != nil {
 		return nil, err
 	}
 
-	if *manualTestMode != "run" && *manualTestMode != "skip" {
-		return nil, fmt.Errorf("unexpected value for flag -manual-test-mode - allowed values: run|skip, saw: %s", manualTestMode)
+	return &flags, nil
+}
+
+func resolveConfig(flags driverFlags) (*config, error) {
+	commonArgs, err := cli.ResolveCommonConfig(flags.commonFlags, flags.revisionBefore)
+	if err != nil {
+		return nil, err
 	}
 
 	return &config{
-		RevisionBefore: commonArgs.RevisionBefore,
 		Context:        commonArgs.Context,
-		ManualTestMode: *manualTestMode,
+		RevisionBefore: commonArgs.RevisionBefore,
 		TargetPattern:  commonArgs.TargetPattern,
+		ManualTestMode: flags.manualTestMode,
 	}, nil
 }

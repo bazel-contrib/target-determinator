@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.eclipse.jgit.util.FileUtils;
+import org.hamcrest.CoreMatchers;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -84,17 +85,12 @@ public class TargetDeterminatorSpecificFlagsTest {
 
     Files.createFile(testDir.resolve("untracked-file"));
 
-    Set<Label> targets = null;
     try {
       getTargets(Commits.TWO_TESTS, "//...", true);
-    } catch (TargetComputationErrorException e) {
-      targets = e.getTargets();
-    }
-    // If `targets` is not set at this point in the code, it means the command succeeded.
-    if (targets == null) {
       fail("Expected target-determinator command to fail but it succeeded");
+    } catch (TargetComputationErrorException e) {
+      assertThat(e.getOutput(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
     }
-    Util.assertTargetsMatch(targets, Set.of("//..."), Set.of(), false);
   }
 
   @Test
@@ -116,18 +112,13 @@ public class TargetDeterminatorSpecificFlagsTest {
 
     Files.createFile(testDir.resolve("demo-submodule-2").resolve("untracked-file"));
 
-    Set<Label> targets = null;
     try {
       getTargets(Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
           "//...", true);
-    } catch (TargetComputationErrorException e) {
-      targets = e.getTargets();
-    }
-    // If `targets` is not set at this point in the code, it means the command succeeded.
-    if (targets == null) {
       fail("Expected target-determinator command to fail but it succeeded");
+    } catch (TargetComputationErrorException e) {
+      assertThat(e.getOutput(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
     }
-    Util.assertTargetsMatch(targets, Set.of("//..."), Set.of(), false);
   }
 
   private Set<Label> getTargets(String commitBefore, String targetPattern) throws Exception {

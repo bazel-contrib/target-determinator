@@ -6,7 +6,6 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.not;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
@@ -50,7 +49,6 @@ public abstract class Tests {
   protected static final String ignoredFileName = "some-file";
 
   private boolean allowOverBuilds = false;
-  private boolean expectFailure = false;
 
   @Rule public TestName name = new TestName();
 
@@ -61,10 +59,6 @@ public abstract class Tests {
 
   protected void allowOverBuilds(String reason) {
     this.allowOverBuilds = true;
-  }
-
-  protected void expectFailure() {
-    this.expectFailure = true;
   }
 
   protected boolean supportsIgnoredUnaddedFiles() {
@@ -95,28 +89,28 @@ public abstract class Tests {
   }
 
   @Test
-  public void addedTarget_native() {
+  public void addedTarget_native() throws Exception {
     doTest(Commits.ONE_TEST, Commits.TWO_TESTS, Set.of("//java/example:OtherExampleTest"));
   }
 
   @Test
-  public void deletedTarget_native() {
+  public void deletedTarget_native() throws Exception {
     doTest(
         Commits.TWO_TESTS, Commits.ONE_TEST, Set.of(), Set.of("//java/example:OtherExampleTest"));
   }
 
   @Test
-  public void ruleAffectingAttributeChange_native() {
+  public void ruleAffectingAttributeChange_native() throws Exception {
     doTest(Commits.TWO_TESTS, Commits.HAS_JVM_FLAGS, Set.of("//java/example:ExampleTest"));
   }
 
   @Test
-  public void explicitlySpecifyingDefaultValueDoesNotTrigger_native() {
+  public void explicitlySpecifyingDefaultValueDoesNotTrigger_native() throws Exception {
     doTest(Commits.TWO_TESTS, Commits.EXPLICIT_DEFAULT_VALUE, Set.of());
   }
 
   @Test
-  public void changedBazelVersion_native() {
+  public void changedBazelVersion_native() throws Exception {
     doTest(
         Commits.TWO_TESTS,
         Commits.TWO_NATIVE_TESTS_BAZEL3,
@@ -124,7 +118,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void changedBazelVersion_starlark() {
+  public void changedBazelVersion_starlark() throws Exception {
     doTest(
         Commits.SIMPLE_JAVA_LIBRARY_TARGETS,
         Commits.SIMPLE_TARGETS_BAZEL3,
@@ -132,12 +126,12 @@ public abstract class Tests {
   }
 
   @Test
-  public void changedSrc() {
+  public void changedSrc() throws Exception {
     doTest(Commits.TWO_TESTS, Commits.MODIFIED_TEST_SRC, Set.of("//java/example:ExampleTest"));
   }
 
   @Test
-  public void changedTransitiveSrc() {
+  public void changedTransitiveSrc() throws Exception {
     doTest(
         Commits.SIMPLE_JAVA_LIBRARY_TARGETS,
         Commits.CHANGE_TRANSITIVE_FILE,
@@ -145,7 +139,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void changedBazelrcAffectingAllTests() {
+  public void changedBazelrcAffectingAllTests() throws Exception {
     doTest(
         Commits.TWO_LANGUAGES_OF_TESTS,
         Commits.BAZELRC_TEST_ENV,
@@ -153,7 +147,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void changedBazelrcAffectingSomeTests() {
+  public void changedBazelrcAffectingSomeTests() throws Exception {
     doTest(
         Commits.TWO_LANGUAGES_OF_TESTS,
         Commits.BAZELRC_AFFECTING_JAVA,
@@ -161,12 +155,12 @@ public abstract class Tests {
   }
 
   @Test
-  public void emptyTryImportInBazelrc() {
+  public void emptyTryImportInBazelrc() throws Exception {
     doTest(Commits.TWO_TESTS, Commits.ADD_OPTIONAL_PRESENT_EMPTY_BAZELRC, Set.of());
   }
 
   @Test
-  public void tryImportInBazelrcAffectingJava() {
+  public void tryImportInBazelrcAffectingJava() throws Exception {
     doTest(
         Commits.TWO_LANGUAGES_OF_TESTS,
         Commits.TWO_LANGUAGES_OPTIONAL_MISSING_TRY_IMPORT,
@@ -186,12 +180,12 @@ public abstract class Tests {
   }
 
   @Test
-  public void importInBazelrcNotAffectingJava() {
+  public void importInBazelrcNotAffectingJava() throws Exception {
     doTest(Commits.TWO_LANGUAGES_OF_TESTS, Commits.TWO_LANGUAGES_NOOP_IMPORTED_BAZELRC, Set.of());
   }
 
   @Test
-  public void importInBazelrcAffectingJava() {
+  public void importInBazelrcAffectingJava() throws Exception {
     doTest(
         Commits.TWO_LANGUAGES_OF_TESTS,
         Commits.TWO_LANGUAGES_IMPORTED_BAZELRC_AFFECTING_JAVA,
@@ -199,12 +193,12 @@ public abstract class Tests {
   }
 
   @Test
-  public void addedUnusedStarlarkRulesTriggersNoTargets() {
+  public void addedUnusedStarlarkRulesTriggersNoTargets() throws Exception {
     doTest(Commits.TWO_TESTS, Commits.JAVA_TESTS_AND_SIMPLE_JAVA_RULES, Set.of());
   }
 
   @Test
-  public void starlarkRulesTrigger() {
+  public void starlarkRulesTrigger() throws Exception {
     doTest(
         Commits.SIMPLE_JAVA_LIBRARY_RULE,
         Commits.SIMPLE_JAVA_LIBRARY_TARGETS,
@@ -212,7 +206,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void addingDepOnStarlarkRulesTrigger() {
+  public void addingDepOnStarlarkRulesTrigger() throws Exception {
     doTest(
         Commits.SIMPLE_JAVA_LIBRARY_AND_JAVA_TESTS,
         Commits.DEP_ON_STARLARK_TARGET,
@@ -220,7 +214,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void changingStarlarkRuleDefinition() {
+  public void changingStarlarkRuleDefinition() throws Exception {
     doTest(
         Commits.DEP_ON_STARLARK_TARGET,
         Commits.CHANGE_STARLARK_RULE_IMPLEMENTATION,
@@ -231,7 +225,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void refactoringStarlarkRuleIsNoOp() {
+  public void refactoringStarlarkRuleIsNoOp() throws Exception {
     doTest(
         Commits.CHANGE_STARLARK_RULE_IMPLEMENTATION,
         Commits.NOOP_REFACTOR_STARLARK_RULE_IMPLEMENTATION,
@@ -239,7 +233,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void movingStarlarkRuleToExternalRepoIsNoOp() {
+  public void movingStarlarkRuleToExternalRepoIsNoOp() throws Exception {
     doTest(
         Commits.NOOP_REFACTOR_STARLARK_RULE_IMPLEMENTATION,
         Commits.RULES_IN_EXTERNAL_REPO,
@@ -247,12 +241,12 @@ public abstract class Tests {
   }
 
   @Test
-  public void refactoringWorkspaceFileInNoOp() {
+  public void refactoringWorkspaceFileInNoOp() throws Exception {
     doTest(Commits.RULES_IN_EXTERNAL_REPO, Commits.NOOP_REFACTOR_IN_WORKSPACE_FILE, Set.of());
   }
 
   @Test
-  public void modifyingRuleViaWorkspaceFile() {
+  public void modifyingRuleViaWorkspaceFile() throws Exception {
     doTest(
         Commits.NOOP_REFACTOR_IN_WORKSPACE_FILE,
         Commits.ADD_SIMPLE_PACKAGE_RULE,
@@ -260,12 +254,12 @@ public abstract class Tests {
   }
 
   @Test
-  public void unconsumedIndirectWorkspaceChangeIsNoOp() {
+  public void unconsumedIndirectWorkspaceChangeIsNoOp() throws Exception {
     doTest(Commits.ADD_SIMPLE_PACKAGE_RULE, Commits.REFACTORED_WORKSPACE_INDIRECTLY, Set.of());
   }
 
   @Test
-  public void changingMacroExpansionBasedOnFileExistence() {
+  public void changingMacroExpansionBasedOnFileExistence() throws Exception {
     // Add a second target - changes the definition of the first target, so it should re-run:
     doTest(
         Commits.PATHOLOGICAL_RULES_SINGLE_TARGET,
@@ -290,7 +284,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void changingFileLoadedByWorkspaceTriggersTargets() {
+  public void changingFileLoadedByWorkspaceTriggersTargets() throws Exception {
     doTest(
         Commits.ADD_SIMPLE_PACKAGE_RULE,
         Commits.CHANGE_ATTRIBUTES_VIA_INDIRECTION,
@@ -301,24 +295,24 @@ public abstract class Tests {
   }
 
   @Test
-  public void removingGlobbedFileTriggers() {
+  public void removingGlobbedFileTriggers() throws Exception {
     doTest(Commits.HAS_GLOBS, Commits.CHANGE_GLOBS, Set.of("//globs:root"));
   }
 
   @Test
-  public void removingBuildFileRetriggersGlobs() {
+  public void removingBuildFileRetriggersGlobs() throws Exception {
     doTest(
         Commits.ADD_BUILD_FILE_INTERFERING_WTH_GLOBS, Commits.CHANGE_GLOBS, Set.of("//globs:root"));
   }
 
   @Test
-  public void addingBuildFileRetriggersGlobs() {
+  public void addingBuildFileRetriggersGlobs() throws Exception {
     doTest(
         Commits.CHANGE_GLOBS, Commits.ADD_BUILD_FILE_INTERFERING_WTH_GLOBS, Set.of("//globs:root"));
   }
 
   @Test
-  public void addingTargetUsedInHostConfiguration() {
+  public void addingTargetUsedInHostConfiguration() throws Exception {
     doTest(
         Commits.BAZELRC_INCLUDED_EMPTY,
         Commits.JAVA_USED_IN_GENRULE,
@@ -326,7 +320,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void changingHostConfigurationDoesNotAffectTargetConfiguration() {
+  public void changingHostConfigurationDoesNotAffectTargetConfiguration() throws Exception {
     // Only run_jbin should be present because it's the only host java target
     doTest(
         Commits.JAVA_USED_IN_GENRULE,
@@ -335,7 +329,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void changingTargetConfigurationDoesNotAffectHostConfiguration() {
+  public void changingTargetConfigurationDoesNotAffectHostConfiguration() throws Exception {
     // run_jbin should not be present because it's configured in host not target
     doTest(
         Commits.JAVA_USED_IN_GENRULE,
@@ -344,23 +338,27 @@ public abstract class Tests {
   }
 
   @Test
-  public void reducingVisibilityOnDependencyAffectsTarget() {
-    expectFailure();
-    doTest(
-        Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
-        Commits.REDUCE_DEPENDENCY_VISIBILITY,
-        Set.of("//..."));
+  public void reducingVisibilityOnDependencyAffectsTarget() throws Exception {
+    try {
+      doTest(
+          Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
+          Commits.REDUCE_DEPENDENCY_VISIBILITY,
+          Set.of("//NotApplicable"));
+      fail("Expected target-determinator command to fail but it succeeded");
+    } catch (TargetComputationErrorException e) {
+      // Invocation failed as expected.
+    }
   }
 
   @Test
-  public void succeedForUncleanRepository() throws IOException {
+  public void succeedForUncleanRepository() throws Exception {
     Files.createFile(testDir.resolve("untracked-file"));
 
     doTest(Commits.TWO_TESTS, Commits.HAS_JVM_FLAGS, Set.of("//java/example:ExampleTest"));
   }
 
   @Test
-  public void succeedForUncleanIgnoredFiles() throws IOException {
+  public void succeedForUncleanIgnoredFiles() throws Exception {
     Path ignoredFile = testDir.resolve("ignored-file");
     Files.createFile(ignoredFile);
 
@@ -385,7 +383,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void addTrivialSubmodule() {
+  public void addTrivialSubmodule() throws Exception {
     doTest(Commits.SIMPLE_JAVA_LIBRARY_TARGETS, Commits.SUBMODULE_ADD_TRIVIAL_SUBMODULE, Set.of());
     assertThat(
         "The submodule should now be present with its README.md but isn't",
@@ -393,7 +391,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void addDependentTargetInSubmodule() {
+  public void addDependentTargetInSubmodule() throws Exception {
     doTest(
         Commits.SUBMODULE_ADD_TRIVIAL_SUBMODULE,
         Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
@@ -401,7 +399,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void changeSubmodulePath() {
+  public void changeSubmodulePath() throws Exception {
     doTest(
         Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
         Commits.SUBMODULE_CHANGE_DIRECTORY,
@@ -417,7 +415,7 @@ public abstract class Tests {
   }
 
   @Test
-  public void deleteSubmodule() {
+  public void deleteSubmodule() throws Exception {
     doTest(Commits.SUBMODULE_CHANGE_DIRECTORY, Commits.SUBMODULE_DELETE_SUBMODULE, Set.of());
 
     assertThat(
@@ -442,7 +440,7 @@ public abstract class Tests {
         gitBranch());
   }
 
-  public void doTest(String commitBefore, String commitAfter, Set<String> expectedTargets) {
+  public void doTest(String commitBefore, String commitAfter, Set<String> expectedTargets) throws TargetComputationErrorException {
     doTest(commitBefore, commitAfter, expectedTargets, Set.of());
   }
 
@@ -450,7 +448,7 @@ public abstract class Tests {
       String commitBefore,
       String commitAfter,
       Set<String> expectedTargetStrings,
-      Set<String> forbiddenTargetStrings) {
+      Set<String> forbiddenTargetStrings) throws TargetComputationErrorException {
     // Check out the commitAfter as it is a requirement for target-determinator.
     try {
       gitCheckout(commitAfter);
@@ -458,22 +456,7 @@ public abstract class Tests {
       fail(e.getMessage());
     }
 
-    Set<Label> targets = null;
-    boolean succeeded = true;
-    try {
-      targets = getTargets(commitBefore, commitAfter);
-    } catch (TargetComputationErrorException e) {
-      if (expectFailure) {
-        targets = e.getTargets();
-      } else {
-        fail(e.getMessage());
-      }
-      succeeded = false;
-    }
-    if (succeeded && expectFailure) {
-        fail("Expected failure running command, but got zero exit status. Output: " + targets.toString());
-    }
-
+    Set<Label> targets = getTargets(commitBefore, commitAfter);
     Util.assertTargetsMatch(
         targets, expectedTargetStrings, forbiddenTargetStrings, allowOverBuilds);
 

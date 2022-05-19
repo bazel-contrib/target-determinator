@@ -1,9 +1,13 @@
 package com.github.bazel_contrib.target_determinator.integration;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
-import java.io.IOException;
+import org.hamcrest.CoreMatchers;
+
 import java.nio.file.Path;
 import java.util.Set;
+
+import static junit.framework.TestCase.fail;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 public class TargetDeterminatorIntegrationTest extends Tests {
 
@@ -27,7 +31,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
-  public void refactoringStarlarkRuleIsNoOp() {
+  public void refactoringStarlarkRuleIsNoOp() throws Exception {
     allowOverBuilds(
         "Rule implementation attr factors in hashes of entire transitively loaded bzl files, rather"
             + " than anything more granular or processed");
@@ -35,7 +39,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
-  public void importInBazelrcAffectingJava() {
+  public void importInBazelrcAffectingJava() throws Exception {
     allowOverBuilds(
         "Configuration calculation doesn't appear to trim java fragments from sh_test"
             + " configuration, so Java changes are viewed to also affect sh_test targets");
@@ -43,7 +47,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
-  public void changedBazelrcAffectingSomeTests() {
+  public void changedBazelrcAffectingSomeTests() throws Exception {
     allowOverBuilds(
         "Configuration calculation doesn't appear to trim java fragments from sh_test"
             + " configuration, so Java changes are viewed to also affect sh_test targets");
@@ -51,7 +55,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
-  public void tryImportInBazelrcAffectingJava() {
+  public void tryImportInBazelrcAffectingJava() throws Exception {
     allowOverBuilds(
         "Configuration calculation doesn't appear to trim java fragments from sh_test"
             + " configuration, so Java changes are viewed to also affect sh_test targets");
@@ -59,7 +63,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
-  public void addingTargetUsedInHostConfiguration() {
+  public void addingTargetUsedInHostConfiguration() throws Exception {
     allowOverBuilds(
         "cquery doesn't factor configuration into ruleInputs, so we can't differentiate between"
             + " host and target deps. See"
@@ -68,7 +72,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
-  public void changingHostConfigurationDoesNotAffectTargetConfiguration() {
+  public void changingHostConfigurationDoesNotAffectTargetConfiguration() throws Exception {
     allowOverBuilds(
         "cquery doesn't factor configuration into ruleInputs, so we can't differentiate between"
             + " host and target deps. See"
@@ -77,11 +81,26 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
-  public void changingTargetConfigurationDoesNotAffectHostConfiguration() {
+  public void changingTargetConfigurationDoesNotAffectHostConfiguration() throws Exception {
     allowOverBuilds(
         "cquery doesn't factor configuration into ruleInputs, so we can't differentiate between"
             + " host and target deps. See"
             + " https://github.com/bazelbuild/bazel/issues/14610#issuecomment-1024460141");
     super.changingTargetConfigurationDoesNotAffectHostConfiguration();
+  }
+
+  @Override
+  public void reducingVisibilityOnDependencyAffectsTarget() throws Exception {
+    // Specifically check that the output is as expected.
+    try {
+      doTest(
+          Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
+          Commits.REDUCE_DEPENDENCY_VISIBILITY,
+          Set.of("//NotApplicable"));
+    } catch (TargetComputationErrorException e) {
+      assertThat(e.getOutput(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      return;
+    }
+    fail("Expected target-determinator command to fail but it succeeded");
   }
 }

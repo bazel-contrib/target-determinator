@@ -3,7 +3,6 @@ package cli
 import (
 	"flag"
 	"fmt"
-	"log"
 	"path/filepath"
 	"strings"
 
@@ -66,10 +65,11 @@ func (i *EnforceCleanFlag) Set(value string) error {
 }
 
 type CommonFlags struct {
-	WorkingDirectory *string
-	BazelPath        *string
-	EnforceCleanRepo EnforceCleanFlag
-	IgnoredFiles     *IgnoreFileFlag
+	WorkingDirectory  *string
+	BazelPath         *string
+	EnforceCleanRepo  EnforceCleanFlag
+	IgnoredFiles      *IgnoreFileFlag
+	TargetPatternFlag *string
 }
 
 func StrPtr() *string {
@@ -79,10 +79,11 @@ func StrPtr() *string {
 
 func RegisterCommonFlags() *CommonFlags {
 	commonFlags := CommonFlags{
-		WorkingDirectory: StrPtr(),
-		BazelPath:        StrPtr(),
-		EnforceCleanRepo: AllowIgnored,
-		IgnoredFiles:     &IgnoreFileFlag{},
+		WorkingDirectory:  StrPtr(),
+		BazelPath:         StrPtr(),
+		EnforceCleanRepo:  AllowIgnored,
+		IgnoredFiles:      &IgnoreFileFlag{},
+		TargetPatternFlag: StrPtr(),
 	}
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query")
 	flag.StringVar(commonFlags.BazelPath, "bazel", "bazel",
@@ -92,16 +93,30 @@ func RegisterCommonFlags() *CommonFlags {
 			EnforceClean.String(), AllowIgnored.String()))
 	flag.Var(commonFlags.IgnoredFiles, "ignore-file",
 		"Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel graph.")
+	flag.StringVar(commonFlags.TargetPatternFlag, "target-pattern", "//...", "Target pattern to diff.")
 	return &commonFlags
 }
 
-type ProcessedCommonArgs struct {
+type CommonConfig struct {
 	Context        *pkg.Context
 	RevisionBefore pkg.LabelledGitRev
 	TargetPattern  gazelle_label.Pattern
 }
 
-func ProcessCommonArgs(commonFlags *CommonFlags, targetPatternFlag *string) (*ProcessedCommonArgs, error) {
+// ValidateCommonFlags ensures that the argument follow the right format
+func ValidateCommonFlags() (targetPattern string, err error) {
+	positional := flag.Args()
+	if len(positional) != 1 {
+		return "", fmt.Errorf("expected one positional argument, <before-revision>, but got %d", len(positional))
+	}
+	return positional[0], nil
+
+}
+
+func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*CommonConfig, error) {
+
+	// Context attributes
+
 	workingDirectory, err := filepath.Abs(*commonFlags.WorkingDirectory)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get working directory from %v: %w", *commonFlags.WorkingDirectory, err)
@@ -111,9 +126,10 @@ func ProcessCommonArgs(commonFlags *CommonFlags, targetPatternFlag *string) (*Pr
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current git revision: %w", err)
 	}
+
 	afterRev, err := pkg.NewLabelledGitRev(workingDirectory, currentBranch, "after")
 	if err != nil {
-		log.Fatalf("Error while resolving the \"after\" (i.e. original) git revision: %v", err)
+		return nil, fmt.Errorf("failed to resolve the \"after\" (i.e. original) git revision: %w", err)
 	}
 
 	context := &pkg.Context{
@@ -123,32 +139,30 @@ func ProcessCommonArgs(commonFlags *CommonFlags, targetPatternFlag *string) (*Pr
 		IgnoredFiles:     *commonFlags.IgnoredFiles,
 	}
 
-	positional := flag.Args()
-	if len(positional) != 1 {
-		return nil, fmt.Errorf("expected one positional argument, <before-revision>, but got %d", len(positional))
+	// Non-context attributes
+
+	beforeRev, err := pkg.NewLabelledGitRev(workingDirectory, beforeRevStr, "before")
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve the \"before\" git revision: %w", err)
 	}
 
-	beforeRev, err := pkg.NewLabelledGitRev(workingDirectory, positional[0], "before")
+	targetPattern, err := gazelle_label.ParsePattern(*commonFlags.TargetPatternFlag)
 	if err != nil {
-		log.Fatalf("Error while resolving the \"before\" git revision: %v", err)
+		return nil, fmt.Errorf("failed to parse target pattern: %w", err)
 	}
 
-	targetPattern, err := gazelle_label.ParsePattern(*targetPatternFlag)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse -target-pattern: %w", err)
-	}
+	// Additional checks
 
 	isCleanRepo, err := pkg.EnsureGitRepositoryClean(workingDirectory, *commonFlags.IgnoredFiles)
 	if err != nil {
-		log.Fatalf("Failed to check whether the repository is clean: %v", err)
-	}
-	if !isCleanRepo && commonFlags.EnforceCleanRepo == EnforceClean {
-		// Print all targets to stdout in case the caller doesn't check for exit codes (e.g. using pipes in the shell).
-		fmt.Println(targetPattern.String())
-		log.Fatalf("Current repository is not clean and --enforce-clean option is set to '%v'. Exiting.", EnforceClean.String())
+		return nil, fmt.Errorf("failed to check whether the repository is clean: %w", err)
 	}
 
-	return &ProcessedCommonArgs{
+	if !isCleanRepo && commonFlags.EnforceCleanRepo == EnforceClean {
+		return nil, fmt.Errorf("current repository is not clean and --enforce-clean option is set to '%v'. Exiting.", EnforceClean.String())
+	}
+
+	return &CommonConfig{
 		Context:        context,
 		RevisionBefore: beforeRev,
 		TargetPattern:  targetPattern,
