@@ -78,6 +78,8 @@ type Context struct {
 	OriginalRevision LabelledGitRev
 	// BazelPath is the path (or basename to be looked up in $PATH) of the Bazel to invoke.
 	BazelPath string
+	// BazelOutputBase is the path of the Bazel output base directory of the original workspace.
+	BazelOutputBase string
 	// IgnoredFiles represents files that should be ignored for git operations.
 	IgnoredFiles []common.RelPath
 }
@@ -130,7 +132,14 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, pattern label.Pa
 //
 // It returns a non-nil callback to clean up the worktree if it was created.
 func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.Pattern) (*QueryResults, func(), error) {
-	workspacePath := context.WorkspacePath
+	// Create a temporary context to allow the workspace path to point to a git worktree if necessary.
+	context = &Context{
+		WorkspacePath:    context.WorkspacePath,
+		OriginalRevision: context.OriginalRevision,
+		BazelPath:        context.BazelPath,
+		BazelOutputBase:  context.BazelOutputBase,
+		IgnoredFiles:     context.IgnoredFiles,
+	}
 	cleanupFunc := func() {}
 
 	if rev != NoLabelledGitRev {
@@ -146,7 +155,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.
 					err = fmt.Errorf("failed to clean up temporary git worktree at %s: %v", newWorkspacePath, err)
 				}
 			}
-			workspacePath = newWorkspacePath
+			context.WorkspacePath = newWorkspacePath
 		}
 
 		if err2 != nil {
@@ -157,13 +166,13 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.
 
 	// Clear analysis cache before each query, as cquery configurations leak across invocations.
 	// See https://github.com/bazelbuild/bazel/issues/14725
-	if err := clearAnalysisCache(context.BazelPath, workspacePath); err != nil {
+	if err := clearAnalysisCache(context); err != nil {
 		return nil, cleanupFunc, err
 	}
 
-	queryInfo, err := doQueryDeps(context.BazelPath, workspacePath, pattern)
+	queryInfo, err := doQueryDeps(context, pattern)
 	if err != nil {
-		return nil, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, workspacePath, err)
+		return nil, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, context.WorkspacePath, err)
 	}
 	return queryInfo, cleanupFunc, nil
 }
@@ -403,15 +412,15 @@ type LabelAndConfiguration struct {
 
 var targetConfigRegexp = regexp.MustCompile("^([^ ]+) \\(([0-9a-fA-Z]*)\\)$")
 
-func clearAnalysisCache(bazelPath string, workspacePath string) error {
+func clearAnalysisCache(context *Context) error {
 	// Discard the analysis cache:
 	{
 		var stderr bytes.Buffer
-		cmd := exec.Command(bazelPath, "build", "--discard_analysis_cache")
-		cmd.Dir = workspacePath
+		cmd := exec.Command(context.BazelPath, "--output_base", context.BazelOutputBase, "build", "--discard_analysis_cache")
+		cmd.Dir = context.WorkspacePath
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr:\n%v", workspacePath, err, stderr.String())
+			return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr:\n%v", context.WorkspacePath, err, stderr.String())
 		}
 	}
 
@@ -419,19 +428,32 @@ func clearAnalysisCache(bazelPath string, workspacePath string) error {
 	// Perform a no-op build to flush any in-build state from the previous one.
 	{
 		var stderr bytes.Buffer
-		cmd := exec.Command(bazelPath, "build")
-		cmd.Dir = workspacePath
+		cmd := exec.Command(context.BazelPath, "--output_base", context.BazelOutputBase, "build")
+		cmd.Dir = context.WorkspacePath
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to run no-op build after discarding Bazel analysis cache in %v: %w. Stderr:\n%v", workspacePath, err, stderr.String())
+			return fmt.Errorf("failed to run no-op build after discarding Bazel analysis cache in %v: %w. Stderr:\n%v",
+				context.WorkspacePath, err, stderr.String())
 		}
 	}
 	return nil
 }
 
-func doQueryDeps(bazelPath string, workspacePath string, pattern label.Pattern) (*QueryResults, error) {
+func BazelOutputBase(bazelPath string, workspacePath string) (string, error) {
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd := exec.Command(bazelPath, "info", "output_base")
+	cmd.Dir = workspacePath
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to get the Bazel output base directory for the %v: %w. Stderr:\n%v", workspacePath, err, stderrBuf.String())
+	}
+	return strings.TrimRight(stdoutBuf.String(), "\n"), nil
+}
+
+func doQueryDeps(context *Context, pattern label.Pattern) (*QueryResults, error) {
 	depsPattern := fmt.Sprintf("deps(%s)", pattern.String())
-	transitiveResult, err := runToCqueryResult(bazelPath, workspacePath, depsPattern)
+	transitiveResult, err := runToCqueryResult(context, depsPattern)
 	if err != nil {
 		return nil, fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
 	}
@@ -441,7 +463,7 @@ func doQueryDeps(bazelPath string, workspacePath string, pattern label.Pattern) 
 		return nil, fmt.Errorf("failed to parse cquery result: %w", err)
 	}
 
-	matchingTargetResults, err := runToCqueryResult(bazelPath, workspacePath, pattern.String())
+	matchingTargetResults, err := runToCqueryResult(context, pattern.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
@@ -478,12 +500,12 @@ func doQueryDeps(bazelPath string, workspacePath string, pattern label.Pattern) 
 	return queryResults, nil
 }
 
-func runToCqueryResult(bazelPath string, workspacePath string, pattern string) (*analysis.CqueryResult, error) {
+func runToCqueryResult(context *Context, pattern string) (*analysis.CqueryResult, error) {
 	log.Printf("Running cquery on %s", pattern)
 	var output bytes.Buffer
 	var stderr bytes.Buffer
-	queryCmd := exec.Command(bazelPath, "cquery", "--output=proto", pattern)
-	queryCmd.Dir = workspacePath
+	queryCmd := exec.Command(context.BazelPath, "--output_base", context.BazelOutputBase, "cquery", "--output=proto", pattern)
+	queryCmd.Dir = context.WorkspacePath
 	queryCmd.Stdout = &output
 	queryCmd.Stderr = &stderr
 	if err := queryCmd.Run(); err != nil {
