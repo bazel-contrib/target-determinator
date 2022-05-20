@@ -2,10 +2,14 @@ package pkg
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
+	path2 "path"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -80,6 +84,8 @@ type Context struct {
 	BazelPath string
 	// BazelOutputBase is the path of the Bazel output base directory of the original workspace.
 	BazelOutputBase string
+	// DeleteCachedWorktree represents whether we should keep worktrees around for reuse in future invocations.
+	DeleteCachedWorktree bool
 	// IgnoredFiles represents files that should be ignored for git operations.
 	IgnoredFiles []common.RelPath
 }
@@ -134,21 +140,22 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, pattern label.Pa
 func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.Pattern) (*QueryResults, func(), error) {
 	// Create a temporary context to allow the workspace path to point to a git worktree if necessary.
 	context = &Context{
-		WorkspacePath:    context.WorkspacePath,
-		OriginalRevision: context.OriginalRevision,
-		BazelPath:        context.BazelPath,
-		BazelOutputBase:  context.BazelOutputBase,
-		IgnoredFiles:     context.IgnoredFiles,
+		WorkspacePath:        context.WorkspacePath,
+		OriginalRevision:     context.OriginalRevision,
+		BazelPath:            context.BazelPath,
+		BazelOutputBase:      context.BazelOutputBase,
+		DeleteCachedWorktree: context.DeleteCachedWorktree,
+		IgnoredFiles:         context.IgnoredFiles,
 	}
 	cleanupFunc := func() {}
 
 	if rev != NoLabelledGitRev {
 		// This may return a new workspace path to ensure we don't destroy any local data.
-		newWorkspacePath, err2 := gitSafeCheckout(context.WorkspacePath, rev, context.IgnoredFiles)
+		newWorkspacePath, err2 := gitSafeCheckout(context, rev, context.IgnoredFiles)
 
 		// A worktree was created by gitSafeCheckout(). Use it and set the cleanup callback even
 		// if gitSafeCheckout returns an error.
-		if newWorkspacePath != "" {
+		if newWorkspacePath != "" && context.DeleteCachedWorktree {
 			cleanupFunc = func() {
 				err := os.RemoveAll(newWorkspacePath)
 				if err != nil {
@@ -268,47 +275,42 @@ func gitStatus(workingDirectory string) ([]GitFileStatus, error) {
 // the rev revision checked out.
 //
 // When applicable, the caller is responsible for cleaning up the newly created worktree.
-func gitSafeCheckout(workingDirectory string, rev LabelledGitRev, ignoredFiles []common.RelPath) (string, error) {
+func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common.RelPath) (string, error) {
 	useGitWorktree := false
-	isPreCheckoutClean, err := EnsureGitRepositoryClean(workingDirectory, ignoredFiles)
+	isPreCheckoutClean, err := EnsureGitRepositoryClean(context.WorkspacePath, ignoredFiles)
 	if err != nil {
 		return "", fmt.Errorf("failed to check whether the repository is clean: %w", err)
 	}
 	if !isPreCheckoutClean {
-		log.Printf("Working tree is unclean, creating git worktree. This is slow! " +
+		log.Printf("Workspace is unclean, using git worktree. This will be slower the first time. " +
 			"You can avoid this by committing local changes and ignoring untracked files.")
 		useGitWorktree = true
 	} else {
-		if err := gitCheckout(workingDirectory, rev); err != nil {
+		if err := gitCheckout(context.WorkspacePath, rev); err != nil {
 			return "", err
 		}
 
-		isPostCheckoutClean, err := EnsureGitRepositoryClean(workingDirectory, ignoredFiles)
+		isPostCheckoutClean, err := EnsureGitRepositoryClean(context.WorkspacePath, ignoredFiles)
 		if err != nil {
 			return "", fmt.Errorf("failed to check whether the repository is clean: %w", err)
 		}
 		if !isPostCheckoutClean {
 			log.Printf("Detected unclean repository after checkout (likely due to submodule or " +
-				".gitignore changes). Creating git worktree to leave original repository pristine.")
+				".gitignore changes). Using git worktree to leave original repository pristine.")
 			useGitWorktree = true
 		}
 	}
 	newRepositoryPath := ""
 	if useGitWorktree {
-		newRepositoryPath, err = os.MkdirTemp("", "td-worktree-*")
+		newRepositoryPath, err = gitReuseOrCreateWorktree(context.WorkspacePath, rev)
 		if err != nil {
-			return "", fmt.Errorf("failed to create temporary directory for git worktree: %w", err)
+			return "", fmt.Errorf("failed to create or reuse worktree: %w", err)
 		}
-
-		if err = gitCreateWorktree(workingDirectory, newRepositoryPath, rev.Sha); err != nil {
-			return newRepositoryPath, fmt.Errorf("failed to create temporary git worktree: %w", err)
-		}
-		log.Printf("Created git worktree in %v.", newRepositoryPath)
-		workingDirectory = newRepositoryPath
+		context.WorkspacePath = newRepositoryPath
 	}
 
 	gitCmd := exec.Command("git", "submodule", "update", "--init", "--recursive")
-	gitCmd.Dir = workingDirectory
+	gitCmd.Dir = context.WorkspacePath
 	if output, err := gitCmd.CombinedOutput(); err != nil {
 		return newRepositoryPath, fmt.Errorf("failed to update submodules during checkout %s: %w. Output: %v", rev, err, string(output))
 	}
@@ -324,9 +326,80 @@ func gitCheckout(workingDirectory string, rev LabelledGitRev) error {
 	return nil
 }
 
+// gitReuseOrCreateWorktree tries to reuse an existing worktree from a previous invocation and check out the given revision.
+// If it can't, it removes the directory completely and re-creates the worktree.
+//
+// The return path to the worktree is stable between invocations.
+func gitReuseOrCreateWorktree(workingDirectory string, rev LabelledGitRev) (string, error) {
+	currentUser, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine current user: %w", err)
+	}
+	cacheDir := path2.Join(currentUser.HomeDir, ".cache", "target-determinator")
+	if err = os.MkdirAll(cacheDir, 0750); err != nil {
+		return "", fmt.Errorf("failed to create the .cache directory")
+	}
+	hashBuilder := sha1.New()
+	hashBuilder.Write([]byte(workingDirectory))
+	currentDirHash := hex.EncodeToString(hashBuilder.Sum(nil))
+	worktreeDirPath := path2.Join(cacheDir, fmt.Sprintf("td-worktree-%v-%v", path2.Base(workingDirectory), currentDirHash))
+
+	if err := os.MkdirAll(cacheDir, 0750); err != nil {
+		return "", fmt.Errorf("failed to create cache directory %v for git worktree: %w", worktreeDirPath, err)
+	}
+
+	tryReuseDir := true
+	_, err = os.Stat(worktreeDirPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			tryReuseDir = false
+		}
+	}
+
+	// Attempt to git clean and check out the right revision, upon failure, nuke the directory and create a new worktree.
+	if tryReuseDir {
+		err := gitCleanCheckout(worktreeDirPath, rev.Sha)
+		if err != nil {
+			log.Printf("failed to reuse existing git worktree in %v: %v. Will re-create worktree.", worktreeDirPath, err)
+		} else {
+			// If we don't have any errors, our job is done.
+			log.Printf("Reusing git worktree in %v", worktreeDirPath)
+			return worktreeDirPath, nil
+		}
+	}
+
+	err = os.RemoveAll(worktreeDirPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to remove worktree directory %v: %w", worktreeDirPath, err)
+	}
+	if err = gitCreateWorktree(workingDirectory, worktreeDirPath, rev.Sha); err != nil {
+		return worktreeDirPath, fmt.Errorf("failed to create temporary git worktree: %w", err)
+	}
+
+	log.Printf("Using fresh git worktree in %v", worktreeDirPath)
+	return worktreeDirPath, nil
+}
+
+// gitCleanCheckout checks out the given commit and cleans uncommitted changes and untracked files, including ignored ones.
+func gitCleanCheckout(workingDirectory string, rev string) error {
+	gitCmd := exec.Command("git", "checkout", "-f", rev)
+	gitCmd.Dir = workingDirectory
+	if output, err := gitCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to checkout rev %v in git worktree: %w. Output: %v", rev, err, string(output))
+	}
+
+	// Clean the repo, including ignored files.
+	gitCmd = exec.Command("git", "clean", "-ffdx", rev)
+	gitCmd.Dir = workingDirectory
+	if output, err := gitCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to clean git worktree: %w. Output: %v", err, string(output))
+	}
+	return nil
+}
+
 // Create a detached worktree in targetDirectory from the repo present in workingDirectory.
 func gitCreateWorktree(workingDirectory string, targetDirectory string, rev string) error {
-	gitCmd := exec.Command("git", "worktree", "add", "--detach", targetDirectory, rev)
+	gitCmd := exec.Command("git", "worktree", "add", "-f", "--detach", targetDirectory, rev)
 	gitCmd.Dir = workingDirectory
 	if output, err := gitCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to add temporary git worktree: %w. Output: %v", err, string(output))

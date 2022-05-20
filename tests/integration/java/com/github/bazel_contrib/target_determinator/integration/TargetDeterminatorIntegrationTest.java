@@ -22,6 +22,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
         "bazelisk",
         "--ignore-file",
         ignoredDirectoryName,
+        "--delete-cached-worktree",
         commitBefore);
   }
 
