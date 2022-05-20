@@ -86,7 +86,7 @@ public class TargetDeterminatorSpecificFlagsTest {
     Files.createFile(testDir.resolve("untracked-file"));
 
     try {
-      getTargets(Commits.TWO_TESTS, "//...", true);
+      getTargets(Commits.TWO_TESTS, "//...", true, true);
       fail("Expected target-determinator command to fail but it succeeded");
     } catch (TargetComputationErrorException e) {
       assertThat(e.getOutput(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
@@ -100,7 +100,7 @@ public class TargetDeterminatorSpecificFlagsTest {
     Path ignoredFile = testDir.resolve("ignored-file");
     Files.createFile(ignoredFile);
 
-    Set<Label> targets = getTargets(Commits.ONE_TEST, "//...", true);
+    Set<Label> targets = getTargets(Commits.ONE_TEST, "//...", true, true);
     Util.assertTargetsMatch(targets, Set.of("//java/example:OtherExampleTest"), Set.of(), false);
 
     assertThat("expected ignored file to still be present after invocation", ignoredFile.toFile().exists());
@@ -114,23 +114,46 @@ public class TargetDeterminatorSpecificFlagsTest {
 
     try {
       getTargets(Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
-          "//...", true);
+          "//...", true, true);
       fail("Expected target-determinator command to fail but it succeeded");
     } catch (TargetComputationErrorException e) {
       assertThat(e.getOutput(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
     }
   }
 
-  private Set<Label> getTargets(String commitBefore, String targetPattern) throws Exception {
-    return getTargets(commitBefore, targetPattern, false);
+  @Test
+  public void testWorktreeCreation() throws Exception {
+    TestdataRepo.gitCheckout(testDir, Commits.TWO_TESTS);
+    // Make repository unclean so that a worktree gets created.
+    Files.createFile(testDir.resolve("untracked-file"));
+    getTargets(Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
+        "//...", false, false);
+
+    Path worktreePath = TargetDeterminator.getWorktreePath(testDir);
+    assertThat("Expected cached git worktree to be present", Files.exists(worktreePath.resolve(".git")));
+
+    getTargets(Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
+        "//...", false, true);
+    assertThat("Expected cached git worktree to be absent", !Files.exists(worktreePath.resolve(".git")));
+
   }
 
-  private Set<Label> getTargets(String commitBefore, String targetPattern, boolean enforceClean)
+  private Set<Label> getTargets(String commitBefore, String targetPattern) throws Exception {
+    return getTargets(commitBefore, targetPattern, false, true);
+  }
+
+  private Set<Label> getTargets(String commitBefore, String targetPattern, boolean enforceClean, boolean deleteCachedWorktree)
       throws Exception {
-    final List<String> args = Stream.of("--working-directory", testDir.toString(), "--bazel", "bazelisk",
-            "--target-pattern", targetPattern).collect(Collectors.toList());
+    final List<String> args = Stream.of("--working-directory",
+        testDir.toString(),
+        "--bazel", "bazelisk",
+        "--target-pattern", targetPattern
+        ).collect(Collectors.toList());
     if (enforceClean) {
       args.add("--enforce-clean=enforce-clean");
+    }
+    if (deleteCachedWorktree) {
+      args.add("--delete-cached-worktree");
     }
     args.add(commitBefore);
     return TargetDeterminator.getTargets(testDir, args.toArray(new String[0]));

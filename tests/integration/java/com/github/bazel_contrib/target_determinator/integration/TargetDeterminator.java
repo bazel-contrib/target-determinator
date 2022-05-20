@@ -1,15 +1,18 @@
 package com.github.bazel_contrib.target_determinator.integration;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
+import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSet.Builder;
+import com.google.common.hash.Hashing;
 import com.google.common.io.ByteStreams;
 import java.io.File;
 import java.io.IOException;
 import java.lang.ProcessBuilder.Redirect;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Set;
 
 /** Wrapper around a target-determinator binary. */
@@ -21,6 +24,12 @@ public class TargetDeterminator {
   public static Set<Label> getTargets(Path workspace, String... argv)
       throws TargetComputationErrorException {
     return runProcess(workspace, TARGET_DETERMINATOR, argv);
+  }
+
+  public static Path getWorktreePath(Path workingDirectory) {
+    Path cacheDir = Paths.get(System.getProperty("user.home"), ".cache", "target-determinator");
+    String workingDirHash = Hashing.sha1().hashString(workingDirectory.toString(), Charsets.UTF_8).toString();
+    return cacheDir.resolve(String.format("td-worktree-%s-%s", workingDirectory.getFileName(), workingDirHash));
   }
 
   private static ImmutableSet<Label> runProcess(Path workingDirectory, String argv0, String... argv)

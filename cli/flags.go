@@ -65,11 +65,12 @@ func (i *EnforceCleanFlag) Set(value string) error {
 }
 
 type CommonFlags struct {
-	WorkingDirectory  *string
-	BazelPath         *string
-	EnforceCleanRepo  EnforceCleanFlag
-	IgnoredFiles      *IgnoreFileFlag
-	TargetPatternFlag *string
+	WorkingDirectory     *string
+	BazelPath            *string
+	EnforceCleanRepo     EnforceCleanFlag
+	DeleteCachedWorktree bool
+	IgnoredFiles         *IgnoreFileFlag
+	TargetPatternFlag    *string
 }
 
 func StrPtr() *string {
@@ -79,18 +80,21 @@ func StrPtr() *string {
 
 func RegisterCommonFlags() *CommonFlags {
 	commonFlags := CommonFlags{
-		WorkingDirectory:  StrPtr(),
-		BazelPath:         StrPtr(),
-		EnforceCleanRepo:  AllowIgnored,
-		IgnoredFiles:      &IgnoreFileFlag{},
-		TargetPatternFlag: StrPtr(),
+		WorkingDirectory:     StrPtr(),
+		BazelPath:            StrPtr(),
+		EnforceCleanRepo:     AllowIgnored,
+		DeleteCachedWorktree: false,
+		IgnoredFiles:         &IgnoreFileFlag{},
+		TargetPatternFlag:    StrPtr(),
 	}
-	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query")
+	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
 	flag.StringVar(commonFlags.BazelPath, "bazel", "bazel",
-		"Bazel binary (basename on $PATH, or absolute or relative path) to run")
+		"Bazel binary (basename on $PATH, or absolute or relative path) to run.")
 	flag.Var(&commonFlags.EnforceCleanRepo, "enforce-clean",
 		fmt.Sprintf("Pass --enforce-clean=%v to fail if the repository is unclean, or --enforce-clean=%v to allow ignored untracked files (the default).",
 			EnforceClean.String(), AllowIgnored.String()))
+	flag.BoolVar(&commonFlags.DeleteCachedWorktree, "delete-cached-worktree", false,
+		"Delete created worktrees after use when created. Keeping them can make subsequent invocations faster.")
 	flag.Var(commonFlags.IgnoredFiles, "ignore-file",
 		"Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel graph.")
 	flag.StringVar(commonFlags.TargetPatternFlag, "target-pattern", "//...", "Target pattern to diff.")
@@ -138,11 +142,12 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 	}
 
 	context := &pkg.Context{
-		WorkspacePath:    workingDirectory,
-		OriginalRevision: afterRev,
-		BazelPath:        *commonFlags.BazelPath,
-		BazelOutputBase:  outputBase,
-		IgnoredFiles:     *commonFlags.IgnoredFiles,
+		WorkspacePath:        workingDirectory,
+		OriginalRevision:     afterRev,
+		BazelPath:            *commonFlags.BazelPath,
+		BazelOutputBase:      outputBase,
+		DeleteCachedWorktree: commonFlags.DeleteCachedWorktree,
+		IgnoredFiles:         *commonFlags.IgnoredFiles,
 	}
 
 	// Non-context attributes
