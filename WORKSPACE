@@ -5,10 +5,10 @@ http_archive(
     patch_args = ["-p1"],
     # Pull in https://github.com/bazelbuild/bazel-gazelle/pull/1227
     patches = ["@//:third_party/patches/bazel_gazelle/1227-label-pattern-matching.patch"],
-    sha256 = "b751f7fa79829a06778e91cb721e2bcd1e7251d9b22eb8d9ebc4993ecb3ef8dc",
-    strip_prefix = "bazel-gazelle-bd319f810c16ba206a2b87422e8d328cefaded88",
+    sha256 = "dae13a7c6adb742174aafd340ebcb36016de231bd4f926f79c140c7d9b599fb0",
+    strip_prefix = "bazel-gazelle-757e291d1befe9174fb1fcf0d9ade733cbb6b904",
     urls = [
-        "https://github.com/bazelbuild/bazel-gazelle/archive/bd319f810c16ba206a2b87422e8d328cefaded88.zip",
+        "https://github.com/bazelbuild/bazel-gazelle/archive/757e291d1befe9174fb1fcf0d9ade733cbb6b904.zip",
     ],
 )
 
