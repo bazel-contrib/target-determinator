@@ -229,7 +229,7 @@ func GitRevParse(workingDirectory string, rev string, isAbbrevRef bool) (string,
 	gitCmd.Stderr = &stderrBuf
 	err := gitCmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("could not parse revision '%v': %w. Stderr: %v", rev, err, stderrBuf.String())
+		return "", fmt.Errorf("could not parse revision '%v': %w. Stderr from git ↓↓\n%v", rev, err, stderrBuf.String())
 	}
 	return strings.Trim(stdoutBuf.String(), "\n"), nil
 }
@@ -493,7 +493,7 @@ func clearAnalysisCache(context *Context) error {
 		cmd.Dir = context.WorkspacePath
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr:\n%v", context.WorkspacePath, err, stderr.String())
+			return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr from Bazel ↓↓\n%v", context.WorkspacePath, err, stderr.String())
 		}
 	}
 
