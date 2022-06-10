@@ -1,4 +1,5 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("//rules:multi_platform_go_binary.bzl", "multi_platform_go_binary")
 
 go_library(
     name = "driver_lib",
@@ -13,7 +14,7 @@ go_library(
     ],
 )
 
-go_binary(
+multi_platform_go_binary(
     name = "driver",
     embed = [":driver_lib"],
     visibility = ["//visibility:public"],
