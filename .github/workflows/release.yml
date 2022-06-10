@@ -1,0 +1,20 @@
+name: release
+on:
+  push:
+    tags:
+      - "*"
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: build
+        run: mkdir .release-artifacts && cp $(bazel build --show_result=9999 target-determinator:all driver:all 2>&1 | grep 'bazel-out') .release-artifacts/
+      - name: release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: .release-artifacts/*
+          prerelease: true
+          generate_release_notes: true
