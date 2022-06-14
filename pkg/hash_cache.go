@@ -14,7 +14,7 @@ import (
 
 	ss "github.com/bazel-contrib/target-determinator/common/sorted_set"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
-	build "github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
+	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	gazelle_label "github.com/bazelbuild/bazel-gazelle/label"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"

@@ -20,7 +20,7 @@ import (
 	"github.com/bazel-contrib/target-determinator/common"
 	ss "github.com/bazel-contrib/target-determinator/common/sorted_set"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
-	build "github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
+	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	"github.com/bazelbuild/bazel-gazelle/label"
 	"google.golang.org/protobuf/proto"
 )
