@@ -277,7 +277,7 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 
 	cqueryResult := analysis.CqueryResult{
 		Results: []*analysis.ConfiguredTarget{
-			&analysis.ConfiguredTarget{
+			{
 				Target: &build.Target{
 					Type: build.Target_RULE.Enum(),
 					Rule: &build.Rule{
@@ -292,7 +292,7 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 				},
 				Configuration: configuration,
 			},
-			&analysis.ConfiguredTarget{
+			{
 				Target: &build.Target{
 					Type: build.Target_RULE.Enum(),
 					Rule: &build.Rule{
@@ -306,7 +306,7 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 				},
 				Configuration: configuration,
 			},
-			&analysis.ConfiguredTarget{
+			{
 				Target: &build.Target{
 					Type: build.Target_SOURCE_FILE.Enum(),
 					SourceFile: &build.SourceFile{
@@ -315,7 +315,7 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 					},
 				},
 			},
-			&analysis.ConfiguredTarget{
+			{
 				Target: &build.Target{
 					Type: build.Target_SOURCE_FILE.Enum(),
 					SourceFile: &build.SourceFile{
@@ -324,7 +324,7 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 					},
 				},
 			},
-			&analysis.ConfiguredTarget{
+			{
 				Target: &build.Target{
 					Type: build.Target_SOURCE_FILE.Enum(),
 					SourceFile: &build.SourceFile{
@@ -333,7 +333,7 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 					},
 				},
 			},
-			&analysis.ConfiguredTarget{
+			{
 				Target: &build.Target{
 					Type: build.Target_SOURCE_FILE.Enum(),
 					SourceFile: &build.SourceFile{
