@@ -664,7 +664,6 @@ func labelOf(target *build.Target) (label.Label, error) {
 	default:
 		return label.NoLabel, fmt.Errorf("labelOf called on unknown target type: %v", target.GetType().String())
 	}
-	return label.NoLabel, nil
 }
 
 func equivalentAttributes(left, right *build.Attribute) bool {
