@@ -20,8 +20,8 @@ func WalkAffectedTargets(context *Context, revBefore LabelledGitRev, pattern lab
 		return fmt.Errorf("failed to process change: %w", err)
 	}
 
-	for _, label := range afterMetadata.MatchingTargets.Labels() {
-		if err := DiffSingleLabel(beforeMetadata, afterMetadata, includeDifferences, label, callback); err != nil {
+	for _, l := range afterMetadata.MatchingTargets.Labels() {
+		if err := DiffSingleLabel(beforeMetadata, afterMetadata, includeDifferences, l, callback); err != nil {
 			return err
 		}
 	}

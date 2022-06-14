@@ -444,14 +444,14 @@ func (queryInfo *QueryResults) PrefillCache() error {
 	}
 
 OUTER:
-	for _, label := range queryInfo.MatchingTargets.Labels() {
-		for _, configuration := range queryInfo.MatchingTargets.ConfigurationsFor(label) {
+	for _, l := range queryInfo.MatchingTargets.Labels() {
+		for _, configuration := range queryInfo.MatchingTargets.ConfigurationsFor(l) {
 			if len(errorsChan) > 0 {
 				break OUTER
 			}
 			wg.Add(1)
 			labelAndConfigurationsChan <- LabelAndConfiguration{
-				Label:         label,
+				Label:         l,
 				Configuration: configuration,
 			}
 		}
@@ -542,19 +542,19 @@ func doQueryDeps(context *Context, pattern label.Pattern) (*QueryResults, error)
 	labels := make([]label.Label, 0)
 	labelsToConfigurations := make(map[label.Label][]Configuration)
 	for _, mt := range matchingTargetResults.Results {
-		label, err := labelOf(mt.Target)
+		l, err := labelOf(mt.Target)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
 		}
-		labels = append(labels, label)
+		labels = append(labels, l)
 
 		configuration := mt.Configuration.Checksum
-		labelsToConfigurations[label] = append(labelsToConfigurations[label], Configuration(configuration))
+		labelsToConfigurations[l] = append(labelsToConfigurations[l], Configuration(configuration))
 	}
 
 	processedLabelsToConfigurations := make(map[label.Label]*ss.SortedSet[Configuration], len(labels))
-	for label, configurations := range labelsToConfigurations {
-		processedLabelsToConfigurations[label] = ss.NewSortedSet(configurations)
+	for l, configurations := range labelsToConfigurations {
+		processedLabelsToConfigurations[l] = ss.NewSortedSet(configurations)
 	}
 
 	matchingTargets := &MatchingTargets{
@@ -631,17 +631,17 @@ func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Confi
 	configuredTargets := make(map[label.Label]map[Configuration]*analysis.ConfiguredTarget, len(result.Results))
 
 	for _, target := range result.Results {
-		label, err := labelOf(target.GetTarget())
+		l, err := labelOf(target.GetTarget())
 		if err != nil {
 			return nil, err
 		}
 
-		_, ok := configuredTargets[label]
+		_, ok := configuredTargets[l]
 		if !ok {
-			configuredTargets[label] = make(map[Configuration]*analysis.ConfiguredTarget)
+			configuredTargets[l] = make(map[Configuration]*analysis.ConfiguredTarget)
 		}
 
-		configuredTargets[label][Configuration(target.GetConfiguration().GetChecksum())] = target
+		configuredTargets[l][Configuration(target.GetConfiguration().GetChecksum())] = target
 	}
 	return configuredTargets, nil
 }
