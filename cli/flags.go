@@ -38,8 +38,8 @@ const (
 	AllowDirty
 )
 
-func (s EnforceCleanFlag) String() string {
-	switch s {
+func (e EnforceCleanFlag) String() string {
+	switch e {
 	case EnforceClean:
 		return "enforce-clean"
 	case AllowIgnored:
@@ -50,14 +50,14 @@ func (s EnforceCleanFlag) String() string {
 	return ""
 }
 
-func (i *EnforceCleanFlag) Set(value string) error {
+func (e *EnforceCleanFlag) Set(value string) error {
 	switch value {
 	case "enforce-clean":
-		*i = EnforceClean
+		*e = EnforceClean
 	case "allow-ignored":
-		*i = AllowIgnored
+		*e = AllowIgnored
 	case "allow-dirty":
-		*i = AllowDirty
+		*e = AllowDirty
 	default:
 		return fmt.Errorf("invalid value for --enforce-clean: %v", value)
 	}
