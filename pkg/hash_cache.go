@@ -446,7 +446,7 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 			return nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputLabelString, err)
 		}
 		for _, configuration := range thc.KnownConfigurations(ruleInputLabel).SortedSlice() {
-			ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: Configuration(configuration)})
+			ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: configuration})
 			if err != nil {
 				if err == labelNotFound {
 					// Two issues (so far) have been found which lead to targets being listed in
