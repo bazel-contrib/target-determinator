@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"os/user"
 	path2 "path"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -482,8 +481,6 @@ type LabelAndConfiguration struct {
 	Label         label.Label
 	Configuration Configuration
 }
-
-var targetConfigRegexp = regexp.MustCompile("^([^ ]+) \\(([0-9a-fA-Z]*)\\)$")
 
 func clearAnalysisCache(context *Context) error {
 	// Discard the analysis cache:
