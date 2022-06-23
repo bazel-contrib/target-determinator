@@ -56,6 +56,7 @@ func main() {
 	}
 
 	var targets []gazelle_label.Label
+	targetsSet := make(map[gazelle_label.Label]struct{})
 	commandVerb := "build"
 
 	log.Println("Discovering affected targets")
@@ -63,7 +64,11 @@ func main() {
 		if config.ManualTestMode == "skip" && isTaggedManual(configuredTarget) {
 			return
 		}
+		if _, seen := targetsSet[label]; seen {
+			return
+		}
 		targets = append(targets, label)
+		targetsSet[label] = struct{}{}
 		// This is not an ideal heuristic, ideally cquery would expose to us whether a target is a test target.
 		if strings.HasSuffix(configuredTarget.GetTarget().GetRule().GetRuleClass(), "_test") {
 			commandVerb = "test"
