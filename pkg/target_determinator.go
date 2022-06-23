@@ -410,6 +410,7 @@ type QueryResults struct {
 	MatchingTargets             *MatchingTargets
 	TransitiveConfiguredTargets map[label.Label]map[Configuration]*analysis.ConfiguredTarget
 	TargetHashCache             *TargetHashCache
+	BazelRelease                string
 }
 
 func (queryInfo *QueryResults) PrefillCache() error {
@@ -510,18 +511,31 @@ func clearAnalysisCache(context *Context) error {
 }
 
 func BazelOutputBase(bazelPath string, workspacePath string) (string, error) {
+	return bazelInfo(bazelPath, workspacePath, "output_base")
+}
+
+func BazelRelease(bazelPath string, workspacePath string) (string, error) {
+	return bazelInfo(bazelPath, workspacePath, "release")
+}
+
+func bazelInfo(bazelPath string, workspacePath string, key string) (string, error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd := exec.Command(bazelPath, "info", "output_base")
+	cmd := exec.Command(bazelPath, "info", key)
 	cmd.Dir = workspacePath
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to get the Bazel output base directory for the %v: %w. Stderr:\n%v", workspacePath, err, stderrBuf.String())
+		return "", fmt.Errorf("failed to get the Bazel %v for the %v: %w. Stderr:\n%v", key, workspacePath, err, stderrBuf.String())
 	}
 	return strings.TrimRight(stdoutBuf.String(), "\n"), nil
 }
 
 func doQueryDeps(context *Context, pattern label.Pattern) (*QueryResults, error) {
+	bazelRelease, err := BazelRelease(context.BazelPath, context.WorkspacePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve the bazel release: %w", err)
+	}
+
 	depsPattern := fmt.Sprintf("deps(%s)", pattern.String())
 	transitiveResult, err := runToCqueryResult(context, depsPattern)
 	if err != nil {
@@ -565,7 +579,8 @@ func doQueryDeps(context *Context, pattern label.Pattern) (*QueryResults, error)
 	queryResults := &QueryResults{
 		MatchingTargets:             matchingTargets,
 		TransitiveConfiguredTargets: transitiveConfiguredTargets,
-		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets),
+		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, bazelRelease),
+		BazelRelease:                bazelRelease,
 	}
 	return queryResults, nil
 }

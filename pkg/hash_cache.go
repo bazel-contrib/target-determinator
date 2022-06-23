@@ -21,14 +21,15 @@ import (
 )
 
 // NewTargetHashCache creates a TargetHashCache which uses context for metadata lookups.
-func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget) *TargetHashCache {
+func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget, bazelRelease string) *TargetHashCache {
 	return &TargetHashCache{
 		context: context,
 		fileHashCache: &fileHashCache{
 			cache: make(map[string]*cacheEntry),
 		},
-		cache:  make(map[gazelle_label.Label]map[Configuration]*cacheEntry),
-		frozen: false,
+		bazelRelease: bazelRelease,
+		cache:        make(map[gazelle_label.Label]map[Configuration]*cacheEntry),
+		frozen:       false,
 	}
 }
 
@@ -43,6 +44,7 @@ func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analy
 type TargetHashCache struct {
 	context       map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget
 	fileHashCache *fileHashCache
+	bazelRelease  string
 
 	frozen bool
 
@@ -160,6 +162,14 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 		return nil, nil
 	}
 	var differences []Difference
+
+	if before.bazelRelease != after.bazelRelease {
+		differences = append(differences, Difference{
+			Category: "BazelVersion",
+			Before:   before.bazelRelease,
+			After:    after.bazelRelease,
+		})
+	}
 
 	cBefore, okBefore := before.context[labelAndConfiguration.Label]
 	cAfter, okAfter := after.context[labelAndConfiguration.Label]
@@ -423,6 +433,9 @@ func hashTarget(thc *TargetHashCache, labelAndConfiguration LabelAndConfiguratio
 // If this function changes, so should WalkDiffs.
 func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Configuration) ([]byte, error) {
 	hasher := sha256.New()
+	// Mix in the Bazel version, because Bazel versions changes may cause differences to how rules
+	// are evaluated even if the rules themselves haven't changed.
+	hasher.Write([]byte(thc.bazelRelease))
 	// Hash own attributes
 	hasher.Write([]byte(rule.GetRuleClass()))
 	hasher.Write([]byte(rule.GetSkylarkEnvironmentHashCode()))

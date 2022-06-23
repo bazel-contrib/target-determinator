@@ -3,6 +3,7 @@ package pkg
 import (
 	"bytes"
 	"fmt"
+	"log"
 
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
 	"github.com/bazelbuild/bazel-gazelle/label"
@@ -18,6 +19,10 @@ func WalkAffectedTargets(context *Context, revBefore LabelledGitRev, pattern lab
 	beforeMetadata, afterMetadata, err := FullyProcess(context, revBefore, pattern)
 	if err != nil {
 		return fmt.Errorf("failed to process change: %w", err)
+	}
+
+	if beforeMetadata.BazelRelease == afterMetadata.BazelRelease && beforeMetadata.BazelRelease == "development version" {
+		log.Printf("WARN: Bazel was detected to be a development version - if you're using different development versions at the before and after commits, differences between those versions may not be reflected in this output")
 	}
 
 	for _, l := range afterMetadata.MatchingTargets.Labels() {
