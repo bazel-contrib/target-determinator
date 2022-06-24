@@ -56,7 +56,13 @@ func main() {
 		log.Fatalf("Error during preprocessing: %v", err)
 	}
 
+	seenLabels := make(map[gazelle_label.Label]struct{})
 	callback := func(label gazelle_label.Label, differences []pkg.Difference, configuredTarget *analysis.ConfiguredTarget) {
+		if !config.Verbose {
+			if _, seen := seenLabels[label]; seen {
+				return
+			}
+		}
 		fmt.Print(label)
 		if len(differences) > 0 {
 			fmt.Printf(" Changes:")
@@ -68,6 +74,7 @@ func main() {
 			}
 		}
 		fmt.Println("")
+		seenLabels[label] = struct{}{}
 	}
 
 	if err := pkg.WalkAffectedTargets(config.Context,
