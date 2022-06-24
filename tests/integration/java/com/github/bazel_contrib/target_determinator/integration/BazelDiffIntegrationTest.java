@@ -90,6 +90,14 @@ public class BazelDiffIntegrationTest extends Tests {
   public void tryImportInBazelrcAffectingJava() {}
 
   @Override
+  @Ignore("bazel-diff doesn't seem to track bazel versions.")
+  public void changedBazelPatchVersion_native() {}
+
+  @Override
+  @Ignore("bazel-diff doesn't seem to track bazel versions.")
+  public void changedBazelPatchVersion_starlark() {}
+
+  @Override
   @Ignore("bazel-diff doesn't inspect configurations.")
   public void changingTargetConfigurationDoesNotAffectHostConfiguration() {}
 

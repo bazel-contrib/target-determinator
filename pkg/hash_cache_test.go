@@ -113,7 +113,7 @@ func TestAbsolutifiesBuildFile(t *testing.T) {
 
 func TestDigestsSingleSourceFile(t *testing.T) {
 	_, cqueryResult := layoutProject(t)
-	thc := parseResult(t, cqueryResult)
+	thc := parseResult(t, cqueryResult, "release 5.1.1")
 
 	hash, err := thc.Hash(pkg.LabelAndConfiguration{
 		Label: mustParseLabel("//HelloWorld:HelloWorld.java"),
@@ -133,7 +133,7 @@ func TestDigestsSingleSourceFile(t *testing.T) {
 // https://github.com/bazelbuild/bazel/issues/14611
 func TestDigestingMissingSourceFileIsNotError(t *testing.T) {
 	_, cqueryResult := layoutProject(t)
-	thc := parseResult(t, cqueryResult)
+	thc := parseResult(t, cqueryResult, "release 5.1.1")
 
 	_, err := thc.Hash(pkg.LabelAndConfiguration{
 		Label: mustParseLabel("//HelloWorld:ThereIsNoWorld.java"),
@@ -152,7 +152,7 @@ func TestDigestingMissingSourceFileIsNotError(t *testing.T) {
 // See https://github.com/bazelbuild/bazel/issues/14678
 func TestDigestingDirectoryIsNotError(t *testing.T) {
 	_, cqueryResult := layoutProject(t)
-	thc := parseResult(t, cqueryResult)
+	thc := parseResult(t, cqueryResult, "release 5.1.1")
 
 	_, err := thc.Hash(pkg.LabelAndConfiguration{
 		Label: mustParseLabel("//HelloWorld:InhabitedPlanets"),
@@ -176,7 +176,7 @@ func TestDigestTree(t *testing.T) {
 	}
 
 	_, cqueryResult := layoutProject(t)
-	thc := parseResult(t, cqueryResult)
+	thc := parseResult(t, cqueryResult, "release 5.1.1")
 
 	originalHash, err := thc.Hash(labelAndConfiguration)
 	if err != nil {
@@ -184,7 +184,7 @@ func TestDigestTree(t *testing.T) {
 	}
 
 	_, cqueryResult = layoutProject(t)
-	thc = parseResult(t, cqueryResult)
+	thc = parseResult(t, cqueryResult, "release 5.1.1")
 
 	differentDirHash, err := thc.Hash(labelAndConfiguration)
 	if err != nil {
@@ -192,11 +192,23 @@ func TestDigestTree(t *testing.T) {
 	}
 
 	if !areHashesEqual(originalHash, differentDirHash) {
-		t.Errorf("Wanted original hash and different dir hash to different but were same: %v", hex.EncodeToString(originalHash))
+		t.Errorf("Wanted original hash and different dir hash to be the same but were different: %v and %v", hex.EncodeToString(originalHash), hex.EncodeToString(differentDirHash))
+	}
+
+	_, cqueryResult = layoutProject(t)
+	thc = parseResult(t, cqueryResult, "release 5.1.0")
+
+	differentBazelVersionHash, err := thc.Hash(labelAndConfiguration)
+	if err != nil {
+		t.Fatalf("Failed to get different bazel version hash: %v", err)
+	}
+
+	if areHashesEqual(originalHash, differentBazelVersionHash) {
+		t.Errorf("Wanted original hash and different bazel version hash to be different but were same: %v", hex.EncodeToString(originalHash))
 	}
 
 	projectDir, cqueryResult := layoutProject(t)
-	thc = parseResult(t, cqueryResult)
+	thc = parseResult(t, cqueryResult, "release 5.1.1")
 	if err := ioutil.WriteFile(filepath.Join(projectDir, "HelloWorld.java"), []byte("Not valid java!"), 0o666); err != nil {
 		t.Fatalf("Failed to write changed HelloWorld.java: %v", err)
 	}
@@ -211,7 +223,7 @@ func TestDigestTree(t *testing.T) {
 	}
 
 	projectDir, cqueryResult = layoutProject(t)
-	thc = parseResult(t, cqueryResult)
+	thc = parseResult(t, cqueryResult, "release 5.1.1")
 	if err := ioutil.WriteFile(filepath.Join(projectDir, "Greeting.java"), []byte("Also not valid java!"), 0o666); err != nil {
 		t.Fatalf("Failed to write changed Greeting.java: %v", err)
 	}
@@ -228,7 +240,7 @@ func TestDigestTree(t *testing.T) {
 	// Remove dep on GreetingLib
 	projectDir, cqueryResult = layoutProject(t)
 	cqueryResult.Results[0].GetTarget().GetRule().RuleInput = []string{"//HelloWorld:HelloWorld.java"}
-	thc = parseResult(t, cqueryResult)
+	thc = parseResult(t, cqueryResult, "release 5.1.1")
 
 	removedDepFileHash, err := thc.Hash(labelAndConfiguration)
 	if err != nil {
@@ -239,7 +251,7 @@ func TestDigestTree(t *testing.T) {
 	if err := ioutil.WriteFile(filepath.Join(projectDir, "Greeting.java"), []byte("Also not valid java!"), 0o666); err != nil {
 		t.Fatalf("Failed to write changed Greeting.java: %v", err)
 	}
-	thc = parseResult(t, cqueryResult)
+	thc = parseResult(t, cqueryResult, "release 5.1.1")
 
 	changedTransitiveFileFromRemovedDepHash, err := thc.Hash(labelAndConfiguration)
 	if err != nil {
@@ -348,12 +360,12 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 	return dir, &cqueryResult
 }
 
-func parseResult(t *testing.T, result *analysis.CqueryResult) *pkg.TargetHashCache {
+func parseResult(t *testing.T, result *analysis.CqueryResult, bazelRelease string) *pkg.TargetHashCache {
 	cqueryResult, err := pkg.ParseCqueryResult(result)
 	if err != nil {
 		t.Fatalf("Failed to parse cquery result: %v", err)
 	}
-	return pkg.NewTargetHashCache(cqueryResult)
+	return pkg.NewTargetHashCache(cqueryResult, bazelRelease)
 }
 
 func areHashesEqual(left, right []byte) bool {

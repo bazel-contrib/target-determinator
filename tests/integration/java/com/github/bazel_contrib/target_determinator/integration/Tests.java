@@ -110,7 +110,13 @@ public abstract class Tests {
   }
 
   @Test
-  public void changedBazelVersion_native() throws Exception {
+  public void changedBazelMajorVersion_native() throws Exception {
+    // Between Bazel 3 and 5, the attributes available on java_test changed, which means
+    // these targets may be picked up as changed if a target determinator is just doing
+    // hashing of target-local data.
+    // However, the PatchVersion tests are also significant - changing Bazel versions may change
+    // how RuleClasses are interpreted, or internal implementation details of them not captured
+    // by their query-observable interface.
     doTest(
         Commits.TWO_TESTS,
         Commits.TWO_NATIVE_TESTS_BAZEL3,
@@ -118,10 +124,26 @@ public abstract class Tests {
   }
 
   @Test
-  public void changedBazelVersion_starlark() throws Exception {
+  public void changedBazelPatchVersion_native() throws Exception {
+    doTest(
+        Commits.TWO_TESTS,
+        Commits.TWO_NATIVE_TESTS_BAZEL5_1_0,
+        Set.of("//java/example:ExampleTest", "//java/example:OtherExampleTest"));
+  }
+
+  @Test
+  public void changedBazelMajorVersion_starlark() throws Exception {
     doTest(
         Commits.SIMPLE_JAVA_LIBRARY_TARGETS,
         Commits.SIMPLE_TARGETS_BAZEL3,
+        Set.of("//java/example/simple:simple", "//java/example/simple:simple_dep"));
+  }
+
+  @Test
+  public void changedBazelPatchVersion_starlark() throws Exception {
+    doTest(
+        Commits.SIMPLE_JAVA_LIBRARY_TARGETS,
+        Commits.SIMPLE_TARGETS_BAZEL5_1_0,
         Set.of("//java/example/simple:simple", "//java/example/simple:simple_dep"));
   }
 
@@ -487,11 +509,13 @@ class Commits {
   public static final String HAS_JVM_FLAGS = "3d22ee76c892762fc979eaf0be10019f56c82995";
   public static final String EXPLICIT_DEFAULT_VALUE = "825ec627626fc910ed21bf62241fa96e9aa0c54c";
   public static final String TWO_NATIVE_TESTS_BAZEL3 = "9bb3a36e3e139b9f125d64d35e6da7e712e5f606";
+  public static final String TWO_NATIVE_TESTS_BAZEL5_1_0 = "a9d746c5ff071658a461005577dfd3052d2b212d";
   public static final String MODIFIED_TEST_SRC = "36b10bfc8e4cac62e3471115ab49d0a981b736f6";
   public static final String TWO_LANGUAGES_OF_TESTS = "b93e37329f1e2fc01b99bfcadc5816be8db25b44";
   public static final String BAZELRC_TEST_ENV = "a3d71cfcf64ae1eb6b6ef55268b47fa5cf41b6ff";
   public static final String BAZELRC_AFFECTING_JAVA = "e84173a8937f141c174bc195d77ac5cf845035f1";
   public static final String SIMPLE_TARGETS_BAZEL3 = "69276dbac636812501212237871a3f8fdbd71519";
+  public static final String SIMPLE_TARGETS_BAZEL5_1_0 = "d7dd0a66dbfa9857b2bb642a9cc1ae8103ce50b0";
   public static final String ADD_OPTIONAL_PRESENT_EMPTY_BAZELRC =
       "32e4a4533d752781d76d36d0ec65d74558aa5574";
   public static final String SIMPLE_JAVA_LIBRARY_RULE = "87236b8d878ef596bcb3938c85a850d031ac7fec";

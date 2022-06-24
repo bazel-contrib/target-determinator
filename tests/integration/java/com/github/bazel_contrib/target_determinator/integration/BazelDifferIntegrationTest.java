@@ -120,11 +120,19 @@ public class BazelDifferIntegrationTest extends Tests {
 
   @Override
   @Ignore("bazel-differ doesn't seem to track bazel versions.")
-  public void changedBazelVersion_native() {}
+  public void changedBazelMajorVersion_native() {}
 
   @Override
   @Ignore("bazel-differ doesn't seem to track bazel versions.")
-  public void changedBazelVersion_starlark() {}
+  public void changedBazelPatchVersion_native() {}
+
+  @Override
+  @Ignore("bazel-differ doesn't seem to track bazel versions.")
+  public void changedBazelMajorVersion_starlark() {}
+
+  @Override
+  @Ignore("bazel-differ doesn't seem to track bazel versions.")
+  public void changedBazelPatchVersion_starlark() {}
 
   // Submodules
 
