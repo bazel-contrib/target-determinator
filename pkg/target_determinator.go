@@ -27,11 +27,16 @@ import (
 type Configuration string
 
 type LabelledGitRev struct {
+	// Label is a description of what the git sha represents which may be useful to humans.
+	Label string
+	// GitRev is the actual revision.
+	GitRevision GitRev
+}
+
+type GitRev struct {
 	// Revision represents the git sha or ref. These values must be absolute.
 	// A value such as "HEAD^" first needs to be resolved to the relevant commit.
 	Revision string
-	// Label is a description of what the git sha represents which may be useful to humans.
-	Label string
 	// Sha is the resolved sha256 of the Revision.
 	Sha string
 }
@@ -39,37 +44,53 @@ type LabelledGitRev struct {
 // NoLabelledGitRev represents a null value for LabelledGitRev.
 var NoLabelledGitRev LabelledGitRev
 
+// CurrentWorkingDirState represents the (potentially dirty) state of the current working directory.
+var CurrentWorkingDirState GitRev
+
 // NewLabelledGitRev ensures that the git sha is resolved as soon as the object is created, otherwise we might encounter
 // undesirable behaviors when switching to other revisions e.g. if using "HEAD".
+// If the revision argument is empty, the returned object will return the current workspace's (potentially dirty) state.
 func NewLabelledGitRev(workspacePath string, revision string, label string) (LabelledGitRev, error) {
-	lgr := LabelledGitRev{Revision: revision, Label: label, Sha: ""}
-	sha, err := GitRevParse(workspacePath, revision, false)
-	if err != nil {
-		return lgr, fmt.Errorf("failed to resolve revision %v: %w", revision, err)
-	}
-	lgr.Sha = sha
+	var gr GitRev
+	if revision == "" {
+		gr = CurrentWorkingDirState
+	} else {
+		gr = GitRev{Revision: revision, Sha: ""}
+		sha, err := GitRevParse(workspacePath, revision, false)
+		if err != nil {
+			return NoLabelledGitRev, fmt.Errorf("failed to resolve revision %v: %w", revision, err)
+		}
+		gr.Sha = sha
 
-	// If the provided revision is not a symbolic ref such as a branch then it might be relative to
-	// the current HEAD (e.g. "HEAD" or "HEAD^"), in which case we resolve the SHA to make it absolute.
-	symbolicRef, err := GitRevParse(workspacePath, revision, true)
-	if err != nil {
-		return lgr, fmt.Errorf("failed to resolve sybolic ref for revision %v: %w", revision, err)
-	}
-	if symbolicRef == "" || symbolicRef == "HEAD" {
-		lgr.Revision = sha
+		// If the provided revision is not a symbolic ref such as a branch then it might be relative to
+		// the current HEAD (e.g. "HEAD" or "HEAD^"), in which case we resolve the SHA to make it absolute.
+		symbolicRef, err := GitRevParse(workspacePath, revision, true)
+		if err != nil {
+			return NoLabelledGitRev, fmt.Errorf("failed to resolve sybolic ref for revision %v: %w", revision, err)
+		}
+		if symbolicRef == "" || symbolicRef == "HEAD" {
+			gr.Revision = sha
+		}
 	}
 
-	return lgr, nil
+	return LabelledGitRev{Label: label, GitRevision: gr}, nil
 }
 
 func (l LabelledGitRev) String() string {
-	s := fmt.Sprintf("%s (", l.Label)
-	if l.Revision != l.Sha {
-		s += "revision: "
-		s += l.Revision
-		s += ", "
+	return fmt.Sprintf("revision '%s' (%s)", l.Label, l.GitRevision)
+}
+
+func (l GitRev) String() string {
+	s := ""
+	if l == CurrentWorkingDirState {
+		s = "current working directory state"
+	} else {
+		if l.Revision != l.Sha {
+			s += l.Revision
+			s += ", "
+		}
+		s += "sha: " + l.Sha
 	}
-	s += "sha: " + l.Sha + ")"
 	return s
 }
 
@@ -90,17 +111,16 @@ type Context struct {
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
-func FullyProcess(context *Context, revBefore LabelledGitRev, pattern label.Pattern) (*QueryResults, *QueryResults, error) {
-	log.Printf("Processing revision %s", revBefore)
+func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledGitRev, pattern label.Pattern) (*QueryResults, *QueryResults, error) {
+	log.Printf("Processing %s", revBefore)
 	queryInfoBefore, err := fullyProcessRevision(context, revBefore, pattern)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// At this point, we assume that the workspace is in its pristine stage. Hence, for the "after"
-	// revision, we do not need to check out anything.
-	log.Printf("Processing revision %s", context.OriginalRevision)
-	queryInfoAfter, err := fullyProcessRevision(context, NoLabelledGitRev, pattern)
+	// At this point, we assume that the working directory is back to its pristine state.
+	log.Printf("Processing %s", revAfter)
+	queryInfoAfter, err := fullyProcessRevision(context, revAfter, pattern)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -148,7 +168,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.
 	}
 	cleanupFunc := func() {}
 
-	if rev != NoLabelledGitRev {
+	if rev.GitRevision != CurrentWorkingDirState {
 		// This may return a new workspace path to ensure we don't destroy any local data.
 		newWorkspacePath, err2 := gitSafeCheckout(context, rev, context.IgnoredFiles)
 
@@ -167,7 +187,6 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.
 		if err2 != nil {
 			return nil, cleanupFunc, fmt.Errorf("failed to checkout %s in %v: %w", rev, context.WorkspacePath, err2)
 		}
-
 	}
 
 	// Clear analysis cache before each query, as cquery configurations leak across invocations.
@@ -317,7 +336,7 @@ func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common
 }
 
 func gitCheckout(workingDirectory string, rev LabelledGitRev) error {
-	gitCmd := exec.Command("git", "checkout", rev.Revision)
+	gitCmd := exec.Command("git", "checkout", rev.GitRevision.Revision)
 	gitCmd.Dir = workingDirectory
 	if output, err := gitCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to check out %s: %w. Output: %v", rev, err, string(output))
@@ -357,7 +376,7 @@ func gitReuseOrCreateWorktree(workingDirectory string, rev LabelledGitRev) (stri
 
 	// Attempt to git clean and check out the right revision, upon failure, nuke the directory and create a new worktree.
 	if tryReuseDir {
-		err := gitCleanCheckout(worktreeDirPath, rev.Sha)
+		err := gitCleanCheckout(worktreeDirPath, rev.GitRevision.Sha)
 		if err != nil {
 			log.Printf("failed to reuse existing git worktree in %v: %v. Will re-create worktree.", worktreeDirPath, err)
 		} else {
@@ -371,7 +390,7 @@ func gitReuseOrCreateWorktree(workingDirectory string, rev LabelledGitRev) (stri
 	if err != nil {
 		return "", fmt.Errorf("failed to remove worktree directory %v: %w", worktreeDirPath, err)
 	}
-	if err = gitCreateWorktree(workingDirectory, worktreeDirPath, rev.Sha); err != nil {
+	if err = gitCreateWorktree(workingDirectory, worktreeDirPath, rev.GitRevision.Sha); err != nil {
 		return worktreeDirPath, fmt.Errorf("failed to create temporary git worktree: %w", err)
 	}
 
