@@ -100,8 +100,8 @@ type Context struct {
 	WorkspacePath string
 	// OriginalRevision is the git revision the repo was in when initializing the context.
 	OriginalRevision LabelledGitRev
-	// BazelPath is the path (or basename to be looked up in $PATH) of the Bazel to invoke.
-	BazelPath string
+	// BazelCmd is used to execute when necessary Bazel.
+	BazelCmd BazelCmd
 	// BazelOutputBase is the path of the Bazel output base directory of the original workspace.
 	BazelOutputBase string
 	// DeleteCachedWorktree represents whether we should keep worktrees around for reuse in future invocations.
@@ -160,7 +160,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 	context = &Context{
 		WorkspacePath:        context.WorkspacePath,
 		OriginalRevision:     context.OriginalRevision,
-		BazelPath:            context.BazelPath,
+		BazelCmd:             context.BazelCmd,
 		BazelOutputBase:      context.BazelOutputBase,
 		DeleteCachedWorktree: context.DeleteCachedWorktree,
 		IgnoredFiles:         context.IgnoredFiles,
@@ -513,10 +513,12 @@ func clearAnalysisCache(context *Context) error {
 	// Discard the analysis cache:
 	{
 		var stderr bytes.Buffer
-		cmd := exec.Command(context.BazelPath, "--output_base", context.BazelOutputBase, "build", "--discard_analysis_cache")
-		cmd.Dir = context.WorkspacePath
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
+
+		result, err := context.BazelCmd.Execute(
+			BazelCmdConfig{Dir: context.WorkspacePath, Stderr: &stderr},
+			"--output_base", context.BazelOutputBase, "build", "--discard_analysis_cache")
+
+		if result != 0 || err != nil {
 			return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr from Bazel ↓↓\n%v", context.WorkspacePath, err, stderr.String())
 		}
 	}
@@ -525,10 +527,12 @@ func clearAnalysisCache(context *Context) error {
 	// Perform a no-op build to flush any in-build state from the previous one.
 	{
 		var stderr bytes.Buffer
-		cmd := exec.Command(context.BazelPath, "--output_base", context.BazelOutputBase, "build")
-		cmd.Dir = context.WorkspacePath
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
+
+		result, err := context.BazelCmd.Execute(
+			BazelCmdConfig{Dir: context.WorkspacePath, Stderr: &stderr},
+			"--output_base", context.BazelOutputBase, "build")
+
+		if result != 0 || err != nil {
 			return fmt.Errorf("failed to run no-op build after discarding Bazel analysis cache in %v: %w. Stderr:\n%v",
 				context.WorkspacePath, err, stderr.String())
 		}
@@ -536,28 +540,29 @@ func clearAnalysisCache(context *Context) error {
 	return nil
 }
 
-func BazelOutputBase(bazelPath string, workspacePath string) (string, error) {
-	return bazelInfo(bazelPath, workspacePath, "output_base")
+func BazelOutputBase(workingDirectory string, BazelCmd BazelCmd) (string, error) {
+	return bazelInfo(workingDirectory, BazelCmd, "output_base")
 }
 
-func BazelRelease(bazelPath string, workspacePath string) (string, error) {
-	return bazelInfo(bazelPath, workspacePath, "release")
+func BazelRelease(workingDirectory string, BazelCmd BazelCmd) (string, error) {
+	return bazelInfo(workingDirectory, BazelCmd, "release")
 }
 
-func bazelInfo(bazelPath string, workspacePath string, key string) (string, error) {
+func bazelInfo(workingDirectory string, bazelCmd BazelCmd, key string) (string, error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd := exec.Command(bazelPath, "info", key)
-	cmd.Dir = workspacePath
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to get the Bazel %v for the %v: %w. Stderr:\n%v", key, workspacePath, err, stderrBuf.String())
+
+	result, err := bazelCmd.Execute(
+		BazelCmdConfig{Dir: workingDirectory, Stdout: &stdoutBuf, Stderr: &stderrBuf},
+		"info", key)
+
+	if result != 0 || err != nil {
+		return "", fmt.Errorf("failed to get the Bazel %v: %w. Stderr:\n%v", key, err, stderrBuf.String())
 	}
 	return strings.TrimRight(stdoutBuf.String(), "\n"), nil
 }
 
 func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
-	bazelRelease, err := BazelRelease(context.BazelPath, context.WorkspacePath)
+	bazelRelease, err := BazelRelease(context.WorkspacePath, context.BazelCmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve the bazel release: %w", err)
 	}
@@ -613,21 +618,22 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 
 func runToCqueryResult(context *Context, pattern string) (*analysis.CqueryResult, error) {
 	log.Printf("Running cquery on %s", pattern)
-	var output bytes.Buffer
+	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	queryCmd := exec.Command(context.BazelPath, "--output_base", context.BazelOutputBase, "cquery", "--output=proto", pattern)
-	queryCmd.Dir = context.WorkspacePath
-	queryCmd.Stdout = &output
-	queryCmd.Stderr = &stderr
-	if err := queryCmd.Run(); err != nil {
+
+	returnVal, err := context.BazelCmd.Execute(
+		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
+		"--output_base", context.BazelOutputBase, "cquery", "--output=proto", pattern)
+
+	if returnVal != 0 || err != nil {
 		return nil, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
 	}
 
-	content := output.Bytes()
+	content := stdout.Bytes()
 
 	var result analysis.CqueryResult
 	if err := proto.Unmarshal(content, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal cquery output: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal cquery stdout: %w", err)
 	}
 	return &result, nil
 }

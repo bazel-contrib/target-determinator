@@ -137,7 +137,9 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 		return nil, fmt.Errorf("failed to resolve the \"after\" (i.e. original) git revision: %w", err)
 	}
 
-	outputBase, err := pkg.BazelOutputBase(*commonFlags.BazelPath, workingDirectory)
+	bazelCmd := pkg.DefaultBazelCmd{BazelPath: *commonFlags.BazelPath}
+
+	outputBase, err := pkg.BazelOutputBase(workingDirectory, bazelCmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve the bazel output base: %w", err)
 	}
@@ -145,7 +147,7 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 	context := &pkg.Context{
 		WorkspacePath:        workingDirectory,
 		OriginalRevision:     afterRev,
-		BazelPath:            *commonFlags.BazelPath,
+		BazelCmd:             bazelCmd,
 		BazelOutputBase:      outputBase,
 		DeleteCachedWorktree: commonFlags.DeleteCachedWorktree,
 		IgnoredFiles:         *commonFlags.IgnoredFiles,
