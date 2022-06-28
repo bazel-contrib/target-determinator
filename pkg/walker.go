@@ -16,7 +16,14 @@ type WalkCallback func(label.Label, []Difference, *analysis.ConfiguredTarget)
 // Explanation of the differences may be expensive in both time and memory to compute, so if
 // includeDifferences is set to false, the []Difference parameter to the callback will always be nil.
 func WalkAffectedTargets(context *Context, revBefore LabelledGitRev, pattern label.Pattern, includeDifferences bool, callback WalkCallback) error {
-	beforeMetadata, afterMetadata, err := FullyProcess(context, revBefore, pattern)
+	// The revAfter revision represents the current state of the working directory, which may contain local changes.
+	// It is distinct from context.OriginalRevision, which represents the original commit that we want to reset to before exiting.
+	revAfter, err := NewLabelledGitRev(context.WorkspacePath, "", "after")
+	if err != nil {
+		return fmt.Errorf("could not create \"after\" revision: %w", err)
+	}
+
+	beforeMetadata, afterMetadata, err := FullyProcess(context, revBefore, revAfter, pattern)
 	if err != nil {
 		return fmt.Errorf("failed to process change: %w", err)
 	}
