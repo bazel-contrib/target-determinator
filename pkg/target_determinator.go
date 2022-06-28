@@ -213,15 +213,9 @@ func stringSliceContainsStartingWith(pathPrefixes []common.RelPath, element comm
 }
 
 func EnsureGitRepositoryClean(workingDirectory string, ignoredFiles []common.RelPath) (bool, error) {
-	uncleanFileStatuses, err := gitStatus(workingDirectory)
+	filteredUncleanStatuses, err := GitStatusFiltered(workingDirectory, ignoredFiles)
 	if err != nil {
 		return false, err
-	}
-	var filteredUncleanStatuses []GitFileStatus
-	for _, status := range uncleanFileStatuses {
-		if !stringSliceContainsStartingWith(ignoredFiles, status.FilePath) {
-			filteredUncleanStatuses = append(filteredUncleanStatuses, status)
-		}
 	}
 	if len(filteredUncleanStatuses) > 0 {
 		log.Printf("Current working tree has %v non-ignored untracked files:\n",
@@ -261,6 +255,20 @@ type GitFileStatus struct {
 
 func (s GitFileStatus) String() string {
 	return fmt.Sprintf("%3v %v", s.Status, s.FilePath.String())
+}
+
+func GitStatusFiltered(workingDirectory string, ignoredFiles []common.RelPath) ([]GitFileStatus, error) {
+	uncleanFileStatuses, err := gitStatus(workingDirectory)
+	if err != nil {
+		return nil, err
+	}
+	var filteredUncleanStatuses []GitFileStatus
+	for _, status := range uncleanFileStatuses {
+		if !stringSliceContainsStartingWith(ignoredFiles, status.FilePath) {
+			filteredUncleanStatuses = append(filteredUncleanStatuses, status)
+		}
+	}
+	return filteredUncleanStatuses, nil
 }
 
 func gitStatus(workingDirectory string) ([]GitFileStatus, error) {

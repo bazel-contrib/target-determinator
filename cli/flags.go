@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 
@@ -164,12 +165,17 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 
 	// Additional checks
 
-	isCleanRepo, err := pkg.EnsureGitRepositoryClean(workingDirectory, *commonFlags.IgnoredFiles)
+	uncleanFileStatuses, err := pkg.GitStatusFiltered(workingDirectory, *commonFlags.IgnoredFiles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check whether the repository is clean: %w", err)
 	}
 
-	if !isCleanRepo && commonFlags.EnforceCleanRepo == EnforceClean {
+	if len(uncleanFileStatuses) > 0 && commonFlags.EnforceCleanRepo == EnforceClean {
+		log.Printf("Current working tree has %v non-ignored untracked files:\n",
+			len(uncleanFileStatuses))
+		for _, status := range uncleanFileStatuses {
+			log.Printf("%s\n", status)
+		}
 		return nil, fmt.Errorf("current repository is not clean and --enforce-clean option is set to '%v'. Exiting.", EnforceClean.String())
 	}
 
