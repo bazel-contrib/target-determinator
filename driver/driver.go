@@ -33,7 +33,7 @@ type driverFlags struct {
 type config struct {
 	Context        *pkg.Context
 	RevisionBefore pkg.LabelledGitRev
-	TargetPattern  gazelle_label.Pattern
+	Targets        pkg.TargetsList
 	// One of "run" or "skip".
 	ManualTestMode string
 }
@@ -77,7 +77,7 @@ func main() {
 
 	if err := pkg.WalkAffectedTargets(config.Context,
 		config.RevisionBefore,
-		config.TargetPattern,
+		config.Targets,
 		false,
 		callback); err != nil {
 		log.Fatal(err)
@@ -161,7 +161,7 @@ func resolveConfig(flags driverFlags) (*config, error) {
 	return &config{
 		Context:        commonArgs.Context,
 		RevisionBefore: commonArgs.RevisionBefore,
-		TargetPattern:  commonArgs.TargetPattern,
+		Targets:        commonArgs.Targets,
 		ManualTestMode: flags.manualTestMode,
 	}, nil
 }

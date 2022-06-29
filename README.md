@@ -14,8 +14,8 @@ Where <before-revision> may be any commit revision - full commit hashes, short c
     	Bazel binary (basename on $PATH, or absolute or relative path) to run (default "bazel")
   -ignore-file value
     	Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel graph.
-  -target-pattern string
-    	Target pattern to diff. (default "//...")
+  -targets bazel query
+      Targets to consider. Accepts any valid bazel query expression (see https://bazel.build/reference/query). (default "//...")
   -verbose
     	Whether to explain (messily) why each target is getting run
   -working-directory string
@@ -39,8 +39,8 @@ Optional flags:
     	Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel graph.
   -manual-test-mode string
     	How to handle affected tests tagged manual. Possible values: run|skip (default "skip")
-  -target-pattern string
-    	Target pattern to consider. (default "//...")
+  -targets bazel query
+      Targets to consider. Accepts any valid bazel query expression (see https://bazel.build/reference/query). (default "//...")
   -working-directory string
     	Working directory to query (default ".")
 ```

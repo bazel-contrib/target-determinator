@@ -138,16 +138,16 @@ public class TargetDeterminatorSpecificFlagsTest {
 
   }
 
-  private Set<Label> getTargets(String commitBefore, String targetPattern) throws Exception {
-    return getTargets(commitBefore, targetPattern, false, true);
+  private Set<Label> getTargets(String commitBefore, String targets) throws Exception {
+    return getTargets(commitBefore, targets, false, true);
   }
 
-  private Set<Label> getTargets(String commitBefore, String targetPattern, boolean enforceClean, boolean deleteCachedWorktree)
+  private Set<Label> getTargets(String commitBefore, String targets, boolean enforceClean, boolean deleteCachedWorktree)
       throws Exception {
     final List<String> args = Stream.of("--working-directory",
         testDir.toString(),
         "--bazel", "bazelisk",
-        "--target-pattern", targetPattern
+        "--targets", targets 
         ).collect(Collectors.toList());
     if (enforceClean) {
       args.add("--enforce-clean=enforce-clean");
