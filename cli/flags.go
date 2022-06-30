@@ -9,7 +9,6 @@ import (
 
 	"github.com/bazel-contrib/target-determinator/common"
 	"github.com/bazel-contrib/target-determinator/pkg"
-	gazelle_label "github.com/bazelbuild/bazel-gazelle/label"
 )
 
 type IgnoreFileFlag []common.RelPath
@@ -71,7 +70,7 @@ type CommonFlags struct {
 	EnforceCleanRepo     EnforceCleanFlag
 	DeleteCachedWorktree bool
 	IgnoredFiles         *IgnoreFileFlag
-	TargetPatternFlag    *string
+	TargetsFlag          *string
 }
 
 func StrPtr() *string {
@@ -86,7 +85,7 @@ func RegisterCommonFlags() *CommonFlags {
 		EnforceCleanRepo:     AllowIgnored,
 		DeleteCachedWorktree: false,
 		IgnoredFiles:         &IgnoreFileFlag{},
-		TargetPatternFlag:    StrPtr(),
+		TargetsFlag:          StrPtr(),
 	}
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
 	flag.StringVar(commonFlags.BazelPath, "bazel", "bazel",
@@ -98,14 +97,15 @@ func RegisterCommonFlags() *CommonFlags {
 		"Delete created worktrees after use when created. Keeping them can make subsequent invocations faster.")
 	flag.Var(commonFlags.IgnoredFiles, "ignore-file",
 		"Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel graph.")
-	flag.StringVar(commonFlags.TargetPatternFlag, "target-pattern", "//...", "Target pattern to diff.")
+	flag.StringVar(commonFlags.TargetsFlag, "targets", "//...",
+		"Targets to consider. Accepts any valid `bazel query` expression (see https://bazel.build/reference/query).")
 	return &commonFlags
 }
 
 type CommonConfig struct {
 	Context        *pkg.Context
 	RevisionBefore pkg.LabelledGitRev
-	TargetPattern  gazelle_label.Pattern
+	Targets        pkg.TargetsList
 }
 
 // ValidateCommonFlags ensures that the argument follow the right format
@@ -158,9 +158,9 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 		return nil, fmt.Errorf("failed to resolve the \"before\" git revision: %w", err)
 	}
 
-	targetPattern, err := gazelle_label.ParsePattern(*commonFlags.TargetPatternFlag)
+	targetsList, err := pkg.ParseTargetsList(*commonFlags.TargetsFlag)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse target pattern: %w", err)
+		return nil, fmt.Errorf("failed to parse targets: %w", err)
 	}
 
 	// Additional checks
@@ -182,6 +182,6 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 	return &CommonConfig{
 		Context:        context,
 		RevisionBefore: beforeRev,
-		TargetPattern:  targetPattern,
+		Targets:        targetsList,
 	}, nil
 }

@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "hash_cache.go",
         "target_determinator.go",
+        "targets_list.go",
         "walker.go",
     ],
     importpath = "github.com/bazel-contrib/target-determinator/pkg",

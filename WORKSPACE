@@ -2,9 +2,6 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(
     name = "bazel_gazelle",
-    patch_args = ["-p1"],
-    # Pull in https://github.com/bazelbuild/bazel-gazelle/pull/1227
-    patches = ["@//:third_party/patches/bazel_gazelle/1227-label-pattern-matching.patch"],
     sha256 = "73bac497740e1a9583354ca36332cd48fd60803b1d0ed927ea3fcb3488565182",
     strip_prefix = "bazel-gazelle-a98769c9a26e312ac40d1f5b14f574fdcd4aa21a",
     urls = [

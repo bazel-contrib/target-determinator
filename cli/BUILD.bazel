@@ -11,6 +11,5 @@ go_library(
     deps = [
         "//common",
         "//pkg",
-        "@bazel_gazelle//label:go_default_library",
     ],
 )

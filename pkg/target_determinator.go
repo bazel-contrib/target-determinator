@@ -111,16 +111,16 @@ type Context struct {
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
-func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledGitRev, pattern label.Pattern) (*QueryResults, *QueryResults, error) {
+func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledGitRev, targets TargetsList) (*QueryResults, *QueryResults, error) {
 	log.Printf("Processing %s", revBefore)
-	queryInfoBefore, err := fullyProcessRevision(context, revBefore, pattern)
+	queryInfoBefore, err := fullyProcessRevision(context, revBefore, targets)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// At this point, we assume that the working directory is back to its pristine state.
 	log.Printf("Processing %s", revAfter)
-	queryInfoAfter, err := fullyProcessRevision(context, revAfter, pattern)
+	queryInfoAfter, err := fullyProcessRevision(context, revAfter, targets)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -128,14 +128,14 @@ func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledG
 	return queryInfoBefore, queryInfoAfter, nil
 }
 
-func fullyProcessRevision(context *Context, rev LabelledGitRev, pattern label.Pattern) (queryInfo *QueryResults, err error) {
+func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsList) (queryInfo *QueryResults, err error) {
 	defer func() {
 		innerErr := gitCheckout(context.WorkspacePath, context.OriginalRevision)
 		if innerErr != nil && err == nil {
 			err = fmt.Errorf("failed to check out original commit during cleanup: %v", err)
 		}
 	}()
-	queryInfo, loadMetadataCleanup, err := LoadIncompleteMetadata(context, rev, pattern)
+	queryInfo, loadMetadataCleanup, err := LoadIncompleteMetadata(context, rev, targets)
 	defer loadMetadataCleanup()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load metadata at %s: %w", rev, err)
@@ -149,14 +149,13 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, pattern label.Pa
 }
 
 // LoadIncompleteMetadata loads the metadata about, but not hashes of, targets into a QueryResults.
-// The (transitive) dependencies of the passed pattern will be loaded. For all targets, pass the
-// pattern `//...`.
+// The (transitive) dependencies of the passed targets will be loaded. For all targets, use `//...`.
 //
 // It may change the git revision of the workspace to rev, in which case it is the caller's
 // responsibility to check out the original commit.
 //
 // It returns a non-nil callback to clean up the worktree if it was created.
-func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.Pattern) (*QueryResults, func(), error) {
+func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets TargetsList) (*QueryResults, func(), error) {
 	// Create a temporary context to allow the workspace path to point to a git worktree if necessary.
 	context = &Context{
 		WorkspacePath:        context.WorkspacePath,
@@ -195,7 +194,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, pattern label.
 		return nil, cleanupFunc, err
 	}
 
-	queryInfo, err := doQueryDeps(context, pattern)
+	queryInfo, err := doQueryDeps(context, targets)
 	if err != nil {
 		return nil, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, context.WorkspacePath, err)
 	}
@@ -557,13 +556,13 @@ func bazelInfo(bazelPath string, workspacePath string, key string) (string, erro
 	return strings.TrimRight(stdoutBuf.String(), "\n"), nil
 }
 
-func doQueryDeps(context *Context, pattern label.Pattern) (*QueryResults, error) {
+func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	bazelRelease, err := BazelRelease(context.BazelPath, context.WorkspacePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve the bazel release: %w", err)
 	}
 
-	depsPattern := fmt.Sprintf("deps(%s)", pattern.String())
+	depsPattern := fmt.Sprintf("deps(%s)", targets.String())
 	transitiveResult, err := runToCqueryResult(context, depsPattern)
 	if err != nil {
 		return nil, fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
@@ -574,7 +573,7 @@ func doQueryDeps(context *Context, pattern label.Pattern) (*QueryResults, error)
 		return nil, fmt.Errorf("failed to parse cquery result: %w", err)
 	}
 
-	matchingTargetResults, err := runToCqueryResult(context, pattern.String())
+	matchingTargetResults, err := runToCqueryResult(context, targets.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
