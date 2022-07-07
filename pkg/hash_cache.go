@@ -58,7 +58,7 @@ var notComputedBeforeFrozen = fmt.Errorf("TargetHashCache has already been froze
 // Hash hashes a given LabelAndConfiguration, returning a sha256 which will change if any of the
 // following change:
 //  * Values of attributes of the label (if it's a rule)
-//  * Contents of source files which are direct inputs to the rule (if it's a rule).
+//  * Contents or mode of source files which are direct inputs to the rule (if it's a rule).
 //  * The name of the rule class (e.g. `java_binary`) of the rule (if it's a rule).
 //  * The rule definition, if it's a rule which was implemented in starlark.
 //     Note that this is known to over-estimate - it currently factors in the whole contents of any
@@ -515,6 +515,18 @@ func (hc *fileHashCache) Hash(path string) ([]byte, error) {
 		}
 		defer file.Close()
 		hasher := sha256.New()
+
+		// Hash the file mode.
+		// This is used to detect change such as file exec bit changing.
+		info, err := file.Stat()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := fmt.Fprintf(hasher, info.Mode().String()); err != nil {
+			return nil, err
+		}
+
+		// Hash the content of the file
 		if _, err := io.Copy(hasher, file); err != nil {
 			return nil, err
 		}

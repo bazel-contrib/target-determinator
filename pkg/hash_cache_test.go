@@ -12,7 +12,7 @@ import (
 	"github.com/bazel-contrib/target-determinator/pkg"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
-	gazelle_label "github.com/bazelbuild/bazel-gazelle/label"
+	"github.com/bazelbuild/bazel-gazelle/label"
 	"github.com/otiai10/copy"
 	"google.golang.org/protobuf/proto"
 )
@@ -29,11 +29,9 @@ func TestAbsolutifiesSourceFileInBuildDirBazel4(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/java/example/simple/Dep.java"
-
 	got := pkg.AbsolutePath(&target)
-
 	if want != got {
-		t.Errorf("Wrong absolute path: want %v got %v", want, got)
+		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
 }
 
@@ -47,11 +45,9 @@ func TestAbsolutifiesSourceFileInNestedDirBazel4(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/java/example/simple/just/a/File.java"
-
 	got := pkg.AbsolutePath(&target)
-
 	if want != got {
-		t.Errorf("Wrong absolute path: want %v got %v", want, got)
+		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
 }
 
@@ -65,11 +61,9 @@ func TestAbsolutifiesSourceFileInBuildDirBazel5(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/java/example/simple/Dep.java"
-
 	got := pkg.AbsolutePath(&target)
-
 	if want != got {
-		t.Errorf("Wrong absolute path: want %v got %v", want, got)
+		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
 }
 
@@ -83,11 +77,9 @@ func TestAbsolutifiesSourceFileInNestedDirBazel5(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/java/example/simple/just/a/File.java"
-
 	got := pkg.AbsolutePath(&target)
-
 	if want != got {
-		t.Errorf("Wrong absolute path: want %v got %v", want, got)
+		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
 }
 
@@ -103,11 +95,9 @@ func TestAbsolutifiesBuildFile(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/BUILD.bazel"
-
 	got := pkg.AbsolutePath(&target)
-
 	if want != got {
-		t.Errorf("Wrong absolute path: want %v got %v", want, got)
+		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
 }
 
@@ -121,10 +111,10 @@ func TestDigestsSingleSourceFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error hashing file: %v", err)
 	}
-	const want = "344b8720292ecb15157962017a16417b30ed3463b7787c55d411be08bf780a3b"
+	const want = "33e4ab761182518bbdaabdb916ecea5ad264778881dbe4ce93567f07ea89784b"
 	got := hex.EncodeToString(hash)
 	if want != got {
-		t.Errorf("Wrong hash: want %v got %v", want, got)
+		t.Fatalf("Wrong hash: want %v got %v", want, got)
 	}
 }
 
@@ -168,101 +158,131 @@ func TestDigestTree(t *testing.T) {
 	//       v
 	// HelloWorld.java
 
-	label := mustParseLabel("//HelloWorld:HelloWorld")
-
 	labelAndConfiguration := pkg.LabelAndConfiguration{
-		Label:         label,
+		Label:         mustParseLabel("//HelloWorld:HelloWorld"),
 		Configuration: configurationChecksum,
 	}
 
+	const defaultBazelVersion = "release 5.1.1"
+
 	_, cqueryResult := layoutProject(t)
-	thc := parseResult(t, cqueryResult, "release 5.1.1")
+	thc := parseResult(t, cqueryResult, defaultBazelVersion)
 
 	originalHash, err := thc.Hash(labelAndConfiguration)
 	if err != nil {
 		t.Fatalf("Failed to get original hash: %v", err)
 	}
 
-	_, cqueryResult = layoutProject(t)
-	thc = parseResult(t, cqueryResult, "release 5.1.1")
+	testCases := map[string]func(*testing.T){
+		"different directory": func(t *testing.T) {
+			_, cqueryResult = layoutProject(t)
+			thc = parseResult(t, cqueryResult, defaultBazelVersion)
+			differentDirHash, err := thc.Hash(labelAndConfiguration)
+			if err != nil {
+				t.Fatalf("Failed to get different dir hash: %v", err)
+			}
+			if !areHashesEqual(originalHash, differentDirHash) {
+				t.Fatalf("Wanted original hash and different dir hash to be the same but were different: %v and %v", hex.EncodeToString(originalHash), hex.EncodeToString(differentDirHash))
+			}
+		},
+		"different bazel version": func(t *testing.T) {
+			_, cqueryResult = layoutProject(t)
+			thc = parseResult(t, cqueryResult, "release 5.1.0")
+			differentBazelVersionHash, err := thc.Hash(labelAndConfiguration)
+			if err != nil {
+				t.Fatalf("Failed to get different bazel version hash: %v", err)
+			}
+			if areHashesEqual(originalHash, differentBazelVersionHash) {
+				t.Fatalf("Wanted original hash and different bazel version hash to be different but were same: %v", hex.EncodeToString(originalHash))
+			}
+		},
+		"change direct file content": func(t *testing.T) {
+			projectDir, cqueryResult := layoutProject(t)
+			thc = parseResult(t, cqueryResult, defaultBazelVersion)
+			if err := ioutil.WriteFile(filepath.Join(projectDir, "HelloWorld.java"), []byte("Not valid java!"), 0644); err != nil {
+				t.Fatalf("Failed to write changed HelloWorld.java: %v", err)
+			}
 
-	differentDirHash, err := thc.Hash(labelAndConfiguration)
-	if err != nil {
-		t.Fatalf("Failed to get different dir hash: %v", err)
+			changedDirectFileHash, err := thc.Hash(labelAndConfiguration)
+			if err != nil {
+				t.Fatalf("Failed to get changed direct file hash: %v", err)
+			}
+
+			if areHashesEqual(originalHash, changedDirectFileHash) {
+				t.Fatalf("Wanted original hash and changed direct file hash to be different but were same: %v", hex.EncodeToString(originalHash))
+			}
+		},
+		"change transitive file content": func(t *testing.T) {
+			projectDir, cqueryResult := layoutProject(t)
+			thc = parseResult(t, cqueryResult, defaultBazelVersion)
+			if err := ioutil.WriteFile(filepath.Join(projectDir, "Greeting.java"), []byte("Also not valid java!"), 0644); err != nil {
+				t.Fatalf("Failed to write changed Greeting.java: %v", err)
+			}
+
+			gotHash, err := thc.Hash(labelAndConfiguration)
+			if err != nil {
+				t.Fatalf("Failed to get changed transitive file hash: %v", err)
+			}
+
+			if areHashesEqual(originalHash, gotHash) {
+				t.Fatalf("Wanted original hash and changed transitive file hash to be different but were same: %v", hex.EncodeToString(originalHash))
+			}
+		},
+		"remove dep on GreetingLib": func(t *testing.T) {
+			// Remove dep on GreetingLib
+			projectDir, cqueryResult := layoutProject(t)
+			cqueryResult.Results[0].GetTarget().GetRule().RuleInput = []string{"//HelloWorld:HelloWorld.java"}
+			thc = parseResult(t, cqueryResult, defaultBazelVersion)
+
+			removedDepFileHash, err := thc.Hash(labelAndConfiguration)
+			if err != nil {
+				t.Fatalf("Failed to get removed dep file hash: %v", err)
+			}
+
+			// Still no dep on GreetingLib
+			if err := ioutil.WriteFile(filepath.Join(projectDir, "Greeting.java"), []byte("Also not valid java!"), 0o644); err != nil {
+				t.Fatalf("Failed to write changed Greeting.java: %v", err)
+			}
+			thc = parseResult(t, cqueryResult, defaultBazelVersion)
+
+			changedTransitiveFileFromRemovedDepHash, err := thc.Hash(labelAndConfiguration)
+			if err != nil {
+				t.Fatalf("Failed to get changed transitive file hash: %v", err)
+			}
+
+			if !areHashesEqual(removedDepFileHash, changedTransitiveFileFromRemovedDepHash) {
+				t.Fatalf("Wanted removed dep hash and changed transitive file from removed dep hash to be the same (because file is no longer depended on), but were different. Removed dep hash: %v, Changed transitive file hash: %v", hex.EncodeToString(removedDepFileHash), hex.EncodeToString(changedTransitiveFileFromRemovedDepHash))
+			}
+		},
+		"change file mode": func(t *testing.T) {
+			projectDir, cqueryResult := layoutProject(t)
+			thc = parseResult(t, cqueryResult, defaultBazelVersion)
+
+			t.Logf("changing the mode of the HelloWorld.java file")
+
+			// Change the file mode but not the content.
+			// On disk, this file should be 0644 from testdata/HelloWorld/HelloWorld.java
+			if err := os.Chmod(filepath.Join(projectDir, "HelloWorld.java"), 0755); err != nil {
+				t.Fatalf(err.Error())
+			}
+
+			gotHash, err := thc.Hash(labelAndConfiguration)
+			if err != nil {
+				t.Fatalf("Failed to get changed direct file hash: %v", err)
+			}
+
+			if areHashesEqual(originalHash, gotHash) {
+				t.Fatalf("Wanted original hash and changed direct file hash to be different but were same: %v", hex.EncodeToString(originalHash))
+			}
+		},
 	}
 
-	if !areHashesEqual(originalHash, differentDirHash) {
-		t.Errorf("Wanted original hash and different dir hash to be the same but were different: %v and %v", hex.EncodeToString(originalHash), hex.EncodeToString(differentDirHash))
-	}
-
-	_, cqueryResult = layoutProject(t)
-	thc = parseResult(t, cqueryResult, "release 5.1.0")
-
-	differentBazelVersionHash, err := thc.Hash(labelAndConfiguration)
-	if err != nil {
-		t.Fatalf("Failed to get different bazel version hash: %v", err)
-	}
-
-	if areHashesEqual(originalHash, differentBazelVersionHash) {
-		t.Errorf("Wanted original hash and different bazel version hash to be different but were same: %v", hex.EncodeToString(originalHash))
-	}
-
-	projectDir, cqueryResult := layoutProject(t)
-	thc = parseResult(t, cqueryResult, "release 5.1.1")
-	if err := ioutil.WriteFile(filepath.Join(projectDir, "HelloWorld.java"), []byte("Not valid java!"), 0o666); err != nil {
-		t.Fatalf("Failed to write changed HelloWorld.java: %v", err)
-	}
-
-	changedDirectFileHash, err := thc.Hash(labelAndConfiguration)
-	if err != nil {
-		t.Fatalf("Failed to get changed direct file hash: %v", err)
-	}
-
-	if areHashesEqual(originalHash, changedDirectFileHash) {
-		t.Errorf("Wanted original hash and changed direct file hash to be different but were same: %v", hex.EncodeToString(originalHash))
-	}
-
-	projectDir, cqueryResult = layoutProject(t)
-	thc = parseResult(t, cqueryResult, "release 5.1.1")
-	if err := ioutil.WriteFile(filepath.Join(projectDir, "Greeting.java"), []byte("Also not valid java!"), 0o666); err != nil {
-		t.Fatalf("Failed to write changed Greeting.java: %v", err)
-	}
-
-	changedTransitiveFileHash, err := thc.Hash(labelAndConfiguration)
-	if err != nil {
-		t.Fatalf("Failed to get changed transitive file hash: %v", err)
-	}
-
-	if areHashesEqual(originalHash, changedTransitiveFileHash) {
-		t.Errorf("Wanted original hash and changed transitive file hash to be different but were same: %v", hex.EncodeToString(originalHash))
-	}
-
-	// Remove dep on GreetingLib
-	projectDir, cqueryResult = layoutProject(t)
-	cqueryResult.Results[0].GetTarget().GetRule().RuleInput = []string{"//HelloWorld:HelloWorld.java"}
-	thc = parseResult(t, cqueryResult, "release 5.1.1")
-
-	removedDepFileHash, err := thc.Hash(labelAndConfiguration)
-	if err != nil {
-		t.Fatalf("Failed to get removed dep file hash: %v", err)
-	}
-
-	// Still no dep on GreetingLib
-	if err := ioutil.WriteFile(filepath.Join(projectDir, "Greeting.java"), []byte("Also not valid java!"), 0o666); err != nil {
-		t.Fatalf("Failed to write changed Greeting.java: %v", err)
-	}
-	thc = parseResult(t, cqueryResult, "release 5.1.1")
-
-	changedTransitiveFileFromRemovedDepHash, err := thc.Hash(labelAndConfiguration)
-	if err != nil {
-		t.Fatalf("Failed to get changed transitive file hash: %v", err)
-	}
-
-	if !areHashesEqual(removedDepFileHash, changedTransitiveFileFromRemovedDepHash) {
-		t.Errorf("Wanted removed dep hash and changed transitive file from removed dep hash to be the same (because file is no longer depended on), but were different. Removed dep hash: %v, Changed transitive file hash: %v", hex.EncodeToString(removedDepFileHash), hex.EncodeToString(changedTransitiveFileFromRemovedDepHash))
+	for name, tc := range testCases {
+		t.Run(name, tc)
 	}
 }
 
+// layoutProject setup a canned project layout in a temp directory it creates.
 func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 	dir, err := ioutil.TempDir("", "")
 	if err != nil {
@@ -372,8 +392,8 @@ func areHashesEqual(left, right []byte) bool {
 	return reflect.DeepEqual(left, right)
 }
 
-func mustParseLabel(s string) gazelle_label.Label {
-	l, err := gazelle_label.Parse(s)
+func mustParseLabel(s string) label.Label {
+	l, err := label.Parse(s)
 	if err != nil {
 		panic(err)
 	}

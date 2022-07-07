@@ -171,4 +171,8 @@ public class BazelDifferIntegrationTest extends Tests {
             + " than anything more granular or processed");
     super.refactoringStarlarkRuleIsNoOp();
   }
+
+  @Override
+  @Ignore("bazel-differ doesn't check file modes")
+  public void testChmodFile() {}
 }
