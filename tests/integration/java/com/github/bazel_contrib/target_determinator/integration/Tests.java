@@ -586,5 +586,5 @@ class Commits {
   public static final String ONE_SH_TEST = 
       "106ac1dd1fd762c3786e1f01b2aa47fc1eccab99"; // (v0/sh-test) add an executable shell file and BUILD.bazel file
   public static final String SH_TEST_NOT_EXECUTABLE = 
-      "845171a918115260b50fb487e93c82d49e62abf6"; // (v0/sh-test+1) make shell file non-executable
+      "845171a918115260b50fb487e93c82d49e62abf6"; // (v0/sh-test-non-executable) make shell file non-executable
 }
