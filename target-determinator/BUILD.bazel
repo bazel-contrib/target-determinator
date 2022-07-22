@@ -7,7 +7,7 @@ go_library(
     importpath = "github.com/bazel-contrib/target-determinator/target-determinator",
     visibility = ["//visibility:private"],
     deps = [
-        "//cli:cli_lib",
+        "//cli",
         "//pkg",
         "//third_party/protobuf/bazel/analysis",
         "@bazel_gazelle//label:go_default_library",
