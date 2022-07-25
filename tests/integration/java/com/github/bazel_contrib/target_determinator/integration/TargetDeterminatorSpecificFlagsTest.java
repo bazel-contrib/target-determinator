@@ -80,6 +80,13 @@ public class TargetDeterminatorSpecificFlagsTest {
   }
 
   @Test
+  public void targetPatternFlagQueryBeforeWasError() throws Exception {
+    TestdataRepo.gitCheckout(testDir, Commits.ONE_TEST);
+    Set<Label> targets = getTargets(Commits.NO_TARGETS, "//java/...");
+    Util.assertTargetsMatch(targets, Set.of("//java/example:ExampleTest"), Set.of(), false);
+  }
+
+  @Test
   public void failForUncleanRepositoryWithEnforceClean() throws Exception {
     TestdataRepo.gitCheckout(testDir, Commits.HAS_JVM_FLAGS);
 

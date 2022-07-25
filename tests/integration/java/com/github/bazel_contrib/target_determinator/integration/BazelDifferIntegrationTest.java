@@ -175,4 +175,8 @@ public class BazelDifferIntegrationTest extends Tests {
   @Override
   @Ignore("bazel-differ doesn't check file modes")
   public void testChmodFile() {}
+
+  @Override
+  @Ignore("bazel-differ doesn't handle no targets being returned from a query")
+  public void zeroToOneTarget_native() {}
 }

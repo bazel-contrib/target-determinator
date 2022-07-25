@@ -89,6 +89,11 @@ public abstract class Tests {
   }
 
   @Test
+  public void zeroToOneTarget_native() throws Exception {
+    doTest(Commits.NO_TARGETS, Commits.ONE_TEST, Set.of("//java/example:ExampleTest"));
+  }
+
+  @Test
   public void addedTarget_native() throws Exception {
     doTest(Commits.ONE_TEST, Commits.TWO_TESTS, Set.of("//java/example:OtherExampleTest"));
   }
@@ -509,6 +514,8 @@ public abstract class Tests {
 }
 
 class Commits {
+
+  public static final String NO_TARGETS = "6682820b4acb455f13bc3cf8f7d254056092e306";
   public static final String ONE_TEST = "21024914188b0a8aaf88f81a5b9dfbdf3b24dca5";
   public static final String TWO_TESTS = "d00fdc57fad09fbdc1a9b9e53ce0a102e813fd1a";
   public static final String HAS_JVM_FLAGS = "3d22ee76c892762fc979eaf0be10019f56c82995";
