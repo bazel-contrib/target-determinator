@@ -1,13 +1,10 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
-    name = "cli_lib",
+    name = "cli",
     srcs = ["flags.go"],
     importpath = "github.com/bazel-contrib/target-determinator/cli",
-    visibility = [
-        "//driver:__subpackages__",
-        "//target-determinator:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//common",
         "//pkg",
