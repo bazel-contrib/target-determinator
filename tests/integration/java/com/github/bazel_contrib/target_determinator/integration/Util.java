@@ -1,6 +1,7 @@
 package com.github.bazel_contrib.target_determinator.integration;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.collection.IsEmptyCollection.empty;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
@@ -53,6 +54,8 @@ public class Util {
           "Extra targets were found - this isn't the end of the world, but causes over-building",
           extraTargets,
           empty());
+    } else if (allowOverBuilds) {
+      assertThat("allowOverBuilds is set but no over-building was done", extraTargets, not(empty()));
     }
   }
 
