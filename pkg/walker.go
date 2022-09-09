@@ -54,8 +54,12 @@ func DiffSingleLabel(beforeMetadata, afterMetadata *QueryResults, includeDiffere
 		}
 
 		if len(beforeMetadata.MatchingTargets.ConfigurationsFor(label)) == 0 {
+			category := "NewLabel"
+			if beforeMetadata.QueryError != nil {
+				category = "ErrorInQueryBefore"
+			}
 			collectDifference(Difference{
-				Category: "NewLabel",
+				Category: category,
 			})
 			callback(label, differences, configuredTarget)
 			return nil

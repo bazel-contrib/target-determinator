@@ -84,6 +84,7 @@ java_test(
         "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
         artifact("junit:junit"),
         artifact("org.eclipse.jgit:org.eclipse.jgit"),
+        artifact("org.hamcrest:hamcrest-all"),
     ],
 )
 

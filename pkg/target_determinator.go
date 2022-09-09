@@ -450,6 +450,8 @@ type QueryResults struct {
 	TransitiveConfiguredTargets map[label.Label]map[Configuration]*analysis.ConfiguredTarget
 	TargetHashCache             *TargetHashCache
 	BazelRelease                string
+	// QueryError is whatever error was returned when running the cquery to get these results.
+	QueryError error
 }
 
 func (queryInfo *QueryResults) PrefillCache() error {
@@ -586,6 +588,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	depsPattern := fmt.Sprintf("deps(%s)", targets.String())
 	transitiveResult, err := runToCqueryResult(context, depsPattern)
 	if err != nil {
+		retErr := fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
 		return &QueryResults{
 			MatchingTargets: &MatchingTargets{
 				labels:                 nil,
@@ -594,7 +597,8 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 			TransitiveConfiguredTargets: nil,
 			TargetHashCache:             NewTargetHashCache(nil, bazelRelease),
 			BazelRelease:                bazelRelease,
-		}, fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
+			QueryError:                  retErr,
+		}, retErr
 	}
 
 	transitiveConfiguredTargets, err := ParseCqueryResult(transitiveResult)
@@ -636,6 +640,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		TransitiveConfiguredTargets: transitiveConfiguredTargets,
 		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, bazelRelease),
 		BazelRelease:                bazelRelease,
+		QueryError:                  nil,
 	}
 	return queryResults, nil
 }
