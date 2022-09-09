@@ -451,7 +451,8 @@ type QueryResults struct {
 	TargetHashCache             *TargetHashCache
 	BazelRelease                string
 	// QueryError is whatever error was returned when running the cquery to get these results.
-	QueryError error
+	QueryError     error
+	configurations map[Configuration]singleConfigurationOutput
 }
 
 func (queryInfo *QueryResults) PrefillCache() error {
@@ -635,12 +636,18 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		labelsToConfigurations: processedLabelsToConfigurations,
 	}
 
+	configurations, err := getConfigurationDetails(context)
+	if err != nil {
+		return nil, fmt.Errorf("failed to interpret configurations output: %w", err)
+	}
+
 	queryResults := &QueryResults{
 		MatchingTargets:             matchingTargets,
 		TransitiveConfiguredTargets: transitiveConfiguredTargets,
 		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, bazelRelease),
 		BazelRelease:                bazelRelease,
 		QueryError:                  nil,
+		configurations:              configurations,
 	}
 	return queryResults, nil
 }

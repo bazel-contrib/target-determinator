@@ -290,10 +290,34 @@ def go_dependencies():
         version = "v0.0.0-20191217153810-f85b25db303b",
     )
     go_repository(
+        name = "com_github_tidwall_gjson",
+        importpath = "github.com/tidwall/gjson",
+        sum = "h1:6aeJ0bzojgWLa82gDQHcx3S0Lr/O51I9bJ5nv6JFx5w=",
+        version = "v1.14.0",
+    )
+    go_repository(
+        name = "com_github_tidwall_match",
+        importpath = "github.com/tidwall/match",
+        sum = "h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA=",
+        version = "v1.1.1",
+    )
+    go_repository(
+        name = "com_github_tidwall_pretty",
+        importpath = "github.com/tidwall/pretty",
+        sum = "h1:RWIZEg2iJ8/g6fDDYzMpobmaoGh5OLl4AXtGUGPcqCs=",
+        version = "v1.2.0",
+    )
+    go_repository(
         name = "com_github_tjfoc_gmsm",
         importpath = "github.com/tjfoc/gmsm",
         sum = "h1:aMe1GlZb+0bLjn+cKTPEvvn9oUEBlJitaZiiBwsbgho=",
         version = "v1.4.1",
+    )
+    go_repository(
+        name = "com_github_wi2l_jsondiff",
+        importpath = "github.com/wI2L/jsondiff",
+        sum = "h1:dE00WemBa1uCjrzQUUTE/17I6m5qAaN0EMFOg2Ynr/k=",
+        version = "v0.2.0",
     )
     go_repository(
         name = "com_github_xtaci_kcp_go",
