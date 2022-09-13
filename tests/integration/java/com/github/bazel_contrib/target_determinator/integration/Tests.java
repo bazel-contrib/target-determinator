@@ -187,11 +187,18 @@ public abstract class Tests {
   }
 
   @Test
-  public void tryImportInBazelrcAffectingJava() throws Exception {
+  public void tryImportMissing() throws Exception {
     doTest(
         Commits.TWO_LANGUAGES_OF_TESTS,
         Commits.TWO_LANGUAGES_OPTIONAL_MISSING_TRY_IMPORT,
         Set.of());
+  }
+
+  @Test
+  public void tryImportInBazelrcAffectingJava() throws Exception {
+    allowOverBuilds(
+        "Configuration calculation doesn't appear to trim java fragments from sh_test"
+            + " configuration, so Java changes are viewed to also affect sh_test targets");
     doTest(
         Commits.TWO_LANGUAGES_OPTIONAL_MISSING_TRY_IMPORT,
         Commits.TWO_LANGUAGES_OPTIONAL_PRESENT_BAZELRC_AFFECTING_JAVA,
