@@ -115,7 +115,11 @@ func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledG
 	log.Printf("Processing %s", revBefore)
 	queryInfoBefore, err := fullyProcessRevision(context, revBefore, targets)
 	if err != nil {
-		return nil, nil, err
+		if queryInfoBefore == nil {
+			return nil, nil, err
+		} else {
+			log.Printf("A query error occurred quering %s - ignoring the error and treating all matching targets from the '%s' revision as affected.", revBefore, revAfter.Label)
+		}
 	}
 
 	// At this point, we assume that the working directory is back to its pristine state.
@@ -128,6 +132,11 @@ func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledG
 	return queryInfoBefore, queryInfoAfter, nil
 }
 
+// fullyProcessRevision may return a nil error and a non-nil queryInfo.
+// This indicates that evaluating the initial query at this revision failed,
+// but that the user may want to use the results anyway, despite their query results being empty.
+// This may be useful when the "before" commit is broken for query, as it allows for running all
+// matching targets from the "after" query, despite the "before" being broken.
 func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsList) (queryInfo *QueryResults, err error) {
 	defer func() {
 		innerErr := gitCheckout(context.WorkspacePath, context.OriginalRevision)
@@ -138,7 +147,7 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 	queryInfo, loadMetadataCleanup, err := LoadIncompleteMetadata(context, rev, targets)
 	defer loadMetadataCleanup()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load metadata at %s: %w", rev, err)
+		return queryInfo, fmt.Errorf("failed to load metadata at %s: %w", rev, err)
 	}
 
 	log.Println("Hashing targets")
@@ -155,6 +164,10 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 // responsibility to check out the original commit.
 //
 // It returns a non-nil callback to clean up the worktree if it was created.
+//
+// Note that a non-nil QueryResults may be returned even in the error case, which will have an
+// empty target-set, but may contain other useful information (e.g. the bazel release version).
+// Checking for nil-ness of the error is the true arbiter for whether the entire load was successful.
 func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets TargetsList) (*QueryResults, func(), error) {
 	// Create a temporary context to allow the workspace path to point to a git worktree if necessary.
 	context = &Context{
@@ -196,7 +209,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 
 	queryInfo, err := doQueryDeps(context, targets)
 	if err != nil {
-		return nil, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, context.WorkspacePath, err)
+		return queryInfo, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, context.WorkspacePath, err)
 	}
 	return queryInfo, cleanupFunc, nil
 }
@@ -437,6 +450,8 @@ type QueryResults struct {
 	TransitiveConfiguredTargets map[label.Label]map[Configuration]*analysis.ConfiguredTarget
 	TargetHashCache             *TargetHashCache
 	BazelRelease                string
+	// QueryError is whatever error was returned when running the cquery to get these results.
+	QueryError error
 }
 
 func (queryInfo *QueryResults) PrefillCache() error {
@@ -561,6 +576,9 @@ func bazelInfo(workingDirectory string, bazelCmd BazelCmd, key string) (string, 
 	return strings.TrimRight(stdoutBuf.String(), "\n"), nil
 }
 
+// Note that a non-nil QueryResults may be returned even in the error case, which will have an
+// empty target-set, but may contain other useful information (e.g. the bazel release version).
+// Checking for nil-ness of the error is the true arbiter for whether the entire query was successful.
 func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	bazelRelease, err := BazelRelease(context.WorkspacePath, context.BazelCmd)
 	if err != nil {
@@ -570,7 +588,17 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	depsPattern := fmt.Sprintf("deps(%s)", targets.String())
 	transitiveResult, err := runToCqueryResult(context, depsPattern)
 	if err != nil {
-		return nil, fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
+		retErr := fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
+		return &QueryResults{
+			MatchingTargets: &MatchingTargets{
+				labels:                 nil,
+				labelsToConfigurations: nil,
+			},
+			TransitiveConfiguredTargets: nil,
+			TargetHashCache:             NewTargetHashCache(nil, bazelRelease),
+			BazelRelease:                bazelRelease,
+			QueryError:                  retErr,
+		}, retErr
 	}
 
 	transitiveConfiguredTargets, err := ParseCqueryResult(transitiveResult)
@@ -612,6 +640,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		TransitiveConfiguredTargets: transitiveConfiguredTargets,
 		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, bazelRelease),
 		BazelRelease:                bazelRelease,
+		QueryError:                  nil,
 	}
 	return queryResults, nil
 }

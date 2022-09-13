@@ -3,6 +3,7 @@ package com.github.bazel_contrib.target_determinator.integration;
 import com.github.bazel_contrib.target_determinator.label.Label;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -17,6 +18,7 @@ import org.junit.Test;
 
 import static junit.framework.TestCase.fail;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
 
 public class TargetDeterminatorSpecificFlagsTest {
   private static TestdataRepo testdataRepo;
@@ -77,6 +79,23 @@ public class TargetDeterminatorSpecificFlagsTest {
         getTargets(
             Commits.TWO_NATIVE_TESTS_BAZEL3, "//java/example:ExampleTest");
     Util.assertTargetsMatch(targets, Set.of("//java/example:ExampleTest"), Set.of(), false);
+  }
+
+  @Test
+  public void targetPatternFlagQueryBeforeWasError() throws Exception {
+    TestdataRepo.gitCheckout(testDir, Commits.ONE_TEST);
+    Set<Label> targets = getTargets(Commits.NO_TARGETS, "//java/...");
+    Util.assertTargetsMatch(targets, Set.of("//java/example:ExampleTest"), Set.of(), false);
+  }
+
+  @Test
+  public void targetPatternFlagQueryBeforeWasErrorVerbose() throws Exception {
+    TestdataRepo.gitCheckout(testDir, Commits.ONE_TEST);
+    String output = getOutput(Commits.NO_TARGETS, "//java/...", false, true, List.of("--verbose"));
+    // This isn't great output, and we shouldn't worry about changing its format in the future,
+    // but this test is to ensure we return a result indicating "the query before was bad" rather
+    // than "this target didn't exist before".
+    assertThat(output, equalTo("//java/example:ExampleTest Changes: ErrorInQueryBefore\n"));
   }
 
   @Test
@@ -144,11 +163,23 @@ public class TargetDeterminatorSpecificFlagsTest {
 
   private Set<Label> getTargets(String commitBefore, String targets, boolean enforceClean, boolean deleteCachedWorktree)
       throws Exception {
-    final List<String> args = Stream.of("--working-directory",
-        testDir.toString(),
-        "--bazel", "bazelisk",
-        "--targets", targets 
-        ).collect(Collectors.toList());
+    return getTargets(commitBefore, targets, enforceClean, deleteCachedWorktree, new ArrayList<>());
+  }
+
+  private Set<Label> getTargets(String commitBefore, String targets, boolean enforceClean, boolean deleteCachedWorktree, List<String> flags)
+      throws Exception {
+    return TargetDeterminator.parseLabels(getOutput(commitBefore, targets, enforceClean, deleteCachedWorktree, flags));
+  }
+
+  private String getOutput(String commitBefore, String targets, boolean enforceClean, boolean deleteCachedWorktree, List<String> flags) throws Exception {
+    final List<String> args = Stream.concat(
+        Stream.of("--working-directory",
+            testDir.toString(),
+            "--bazel", "bazelisk",
+            "--targets", targets
+        ),
+        flags.stream()
+    ).collect(Collectors.toList());
     if (enforceClean) {
       args.add("--enforce-clean=enforce-clean");
     }
@@ -156,6 +187,6 @@ public class TargetDeterminatorSpecificFlagsTest {
       args.add("--delete-cached-worktree");
     }
     args.add(commitBefore);
-    return TargetDeterminator.getTargets(testDir, args.toArray(new String[0]));
+    return TargetDeterminator.getOutput(testDir, args.toArray(new String[0]));
   }
 }

@@ -23,7 +23,22 @@ public class TargetDeterminator {
   /** Get the targets returned by a run of target-determinator. */
   public static Set<Label> getTargets(Path workspace, String... argv)
       throws TargetComputationErrorException {
-    return runProcess(workspace, TARGET_DETERMINATOR, argv);
+    return parseLabels(getOutput(workspace, TARGET_DETERMINATOR, argv));
+  }
+
+  /** Get the stdout returned by a run of target-determinator. */
+  public static String getOutput(Path workingDirectory, String... argv) throws TargetComputationErrorException {
+    return getOutput(workingDirectory, TARGET_DETERMINATOR, argv);
+  }
+
+  public static Set<Label> parseLabels(String output) {
+    Builder<Label> targetBuilder = new Builder<>();
+    for (String line : output.split("\n")) {
+      if (!line.isEmpty()) {
+        targetBuilder.add(Label.normalize(line));
+      }
+    }
+    return targetBuilder.build();
   }
 
   public static Path getWorktreePath(Path workingDirectory) {
@@ -32,7 +47,7 @@ public class TargetDeterminator {
     return cacheDir.resolve(String.format("td-worktree-%s-%s", workingDirectory.getFileName(), workingDirHash));
   }
 
-  private static ImmutableSet<Label> runProcess(Path workingDirectory, String argv0, String... argv)
+  private static String getOutput(Path workingDirectory, String argv0, String... argv)
       throws TargetComputationErrorException {
     ProcessBuilder processBuilder = new ProcessBuilder(argv0);
     for (String arg : argv) {
@@ -56,13 +71,7 @@ public class TargetDeterminator {
                 Joiner.on(" ").join(argv), returnCode),
             output);
       }
-      Builder<Label> targetBuilder = new Builder<>();
-      for (String line : output.split("\n")) {
-        if (!line.isEmpty()) {
-          targetBuilder.add(Label.normalize(line));
-        }
-      }
-      return targetBuilder.build();
+      return output;
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
     }
