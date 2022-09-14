@@ -64,9 +64,23 @@ func DiffSingleLabel(beforeMetadata, afterMetadata *QueryResults, includeDiffere
 			callback(label, differences, configuredTarget)
 			return nil
 		} else if !beforeMetadata.MatchingTargets.ContainsLabelAndConfiguration(label, configuration) {
-			collectDifference(Difference{
+			difference := Difference{
 				Category: "NewConfiguration",
-			})
+			}
+			if includeDifferences {
+				configurationsBefore := beforeMetadata.MatchingTargets.ConfigurationsFor(label)
+				configurationsAfter := afterMetadata.MatchingTargets.ConfigurationsFor(label)
+				if len(configurationsBefore) == 1 && len(configurationsAfter) == 1 {
+					diff, _ := diffConfigurations(beforeMetadata.configurations[configurationsBefore[0]], afterMetadata.configurations[configurationsAfter[0]])
+					difference = Difference{
+						Category: "ChangedConfiguration",
+						Before:   string(configurationsBefore[0]),
+						After:    string(configurationsAfter[0]),
+						Key:      diff,
+					}
+				}
+			}
+			collectDifference(difference)
 			callback(label, differences, configuredTarget)
 			return nil
 		}

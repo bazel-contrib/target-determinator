@@ -18,6 +18,7 @@ import org.junit.Test;
 
 import static junit.framework.TestCase.fail;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 
 public class TargetDeterminatorSpecificFlagsTest {
@@ -155,6 +156,16 @@ public class TargetDeterminatorSpecificFlagsTest {
         "//...", false, true);
     assertThat("Expected cached git worktree to be absent", !Files.exists(worktreePath.resolve(".git")));
 
+  }
+
+  @Test
+  public void changedConfigurationVerbose() throws Exception {
+    TestdataRepo.gitCheckout(testDir, Commits.BAZELRC_AFFECTING_JAVA);
+    String output = getOutput(Commits.TWO_LANGUAGES_OF_TESTS, "//java/example:ExampleTest", false, true, List.of("--verbose"));
+    // This isn't great output, and we shouldn't worry about changing its format in the future,
+    // but this test is to ensure we return a result including a hint as to what changed the
+    // configuration.
+    assertThat(output, containsString("-source 7 -target 7"));
   }
 
   private Set<Label> getTargets(String commitBefore, String targets) throws Exception {
