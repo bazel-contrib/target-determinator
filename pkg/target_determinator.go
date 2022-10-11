@@ -437,7 +437,7 @@ func gitCleanCheckout(workingDirectory string, rev string) error {
 
 // Create a detached worktree in targetDirectory from the repo present in workingDirectory.
 func gitCreateWorktree(workingDirectory string, targetDirectory string, rev string) error {
-	gitCmd := exec.Command("git", "worktree", "add", "-f", "--detach", targetDirectory, rev)
+	gitCmd := exec.Command("git", "worktree", "add", "--force", "--force", "--detach", targetDirectory, rev)
 	gitCmd.Dir = workingDirectory
 	if output, err := gitCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to add temporary git worktree: %w. Output: %v", err, string(output))
