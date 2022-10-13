@@ -168,6 +168,13 @@ public class TargetDeterminatorSpecificFlagsTest {
     assertThat(output, containsString("-source 7 -target 7"));
   }
 
+  @Test
+  public void startupOptsIgnoringBazelrc() throws Exception {
+    TestdataRepo.gitCheckout(testDir, Commits.BAZELRC_TEST_ENV);
+    Set<Label> targets = getTargets(Commits.TWO_LANGUAGES_OF_TESTS, "//...", false, true, List.of("--bazel-startup-opts=--noworkspace_rc"));
+    Util.assertTargetsMatch(targets, Set.of(), Set.of(), false);
+  }
+
   private Set<Label> getTargets(String commitBefore, String targets) throws Exception {
     return getTargets(commitBefore, targets, false, true);
   }
