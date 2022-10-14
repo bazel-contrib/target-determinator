@@ -67,7 +67,7 @@ func (e *EnforceCleanFlag) Set(value string) error {
 type CommonFlags struct {
 	WorkingDirectory     *string
 	BazelPath            *string
-	BazelStartupOpts     *string
+	BazelStartupOpts     *MultipleStrings
 	EnforceCleanRepo     EnforceCleanFlag
 	DeleteCachedWorktree bool
 	IgnoredFiles         *IgnoreFileFlag
@@ -83,7 +83,7 @@ func RegisterCommonFlags() *CommonFlags {
 	commonFlags := CommonFlags{
 		WorkingDirectory:     StrPtr(),
 		BazelPath:            StrPtr(),
-		BazelStartupOpts:     StrPtr(),
+		BazelStartupOpts:     &MultipleStrings{},
 		EnforceCleanRepo:     AllowIgnored,
 		DeleteCachedWorktree: false,
 		IgnoredFiles:         &IgnoreFileFlag{},
@@ -92,8 +92,7 @@ func RegisterCommonFlags() *CommonFlags {
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
 	flag.StringVar(commonFlags.BazelPath, "bazel", "bazel",
 		"Bazel binary (basename on $PATH, or absolute or relative path) to run.")
-	flag.StringVar(commonFlags.BazelStartupOpts, "bazel-startup-opts", "bazel-startup-opts",
-		"Startup options to pass to Bazel.")
+	flag.Var(commonFlags.BazelStartupOpts, "bazel-startup-opts", "Startup options to pass to Bazel.")
 	flag.Var(&commonFlags.EnforceCleanRepo, "enforce-clean",
 		fmt.Sprintf("Pass --enforce-clean=%v to fail if the repository is unclean, or --enforce-clean=%v to allow ignored untracked files (the default).",
 			EnforceClean.String(), AllowIgnored.String()))
@@ -193,4 +192,15 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 		RevisionBefore: beforeRev,
 		Targets:        targetsList,
 	}, nil
+}
+
+type MultipleStrings []string
+
+func (s *MultipleStrings) String() string {
+	return fmt.Sprintf("%v", MultipleStrings{})
+}
+
+func (s *MultipleStrings) Set(value string) error {
+	*s = append(*s, value)
+	return nil
 }

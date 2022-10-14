@@ -23,13 +23,16 @@ type BazelCmd interface {
 
 type DefaultBazelCmd struct {
 	BazelPath        string
-	BazelStartupOpts string
+	BazelStartupOpts []string
 }
 
 // Execute calls bazel with the provided arguments.
 // It returns the exit status code or -1 if it errored before the process could start.
 func (c DefaultBazelCmd) Execute(config BazelCmdConfig, args ...string) (int, error) {
-	cmd := exec.Command(c.BazelPath, append([]string{c.BazelStartupOpts}, args...)...)
+	bazelArgv := make([]string, 0, len(c.BazelStartupOpts)+len(args))
+	bazelArgv = append(bazelArgv, c.BazelStartupOpts...)
+	bazelArgv = append(bazelArgv, args...)
+	cmd := exec.Command(c.BazelPath, bazelArgv...)
 	cmd.Dir = config.Dir
 	cmd.Stdout = config.Stdout
 	cmd.Stderr = config.Stderr
