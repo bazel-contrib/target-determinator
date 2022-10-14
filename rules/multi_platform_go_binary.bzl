@@ -8,15 +8,20 @@ _PLATFORMS = [
     ("windows", "amd64"),
 ]
 
-def multi_platform_go_binary(name, **kwargs):
+def multi_platform_go_binary(name, tags = None, **kwargs):
     if "visibility" not in kwargs:
         kwargs["visibility"] = "//visibility:public"
 
     if "goos" in kwargs or "goarch" in kwargs:
         fail("Can't specify goos or goarch for multi_platform_go_binary")
 
+    unplatformed_binary_tags = [t for t in tags or []]
+    if "manual" not in unplatformed_binary_tags:
+        unplatformed_binary_tags.append("manual")
+
     go_binary(
         name = name,
+        tags = unplatformed_binary_tags,
         **kwargs
     )
 
@@ -25,5 +30,6 @@ def multi_platform_go_binary(name, **kwargs):
             name = "{}.{}.{}".format(name, goos, goarch),
             goos = goos,
             goarch = goarch,
+            tags = tags,
             **kwargs
         )
