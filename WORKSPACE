@@ -1,5 +1,9 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+# workaround for https://github.com/bazelbuild/bazel-gazelle/pull/1201
+# see https://github.com/bazelbuild/bazel-gazelle/issues/1344
+# gazelle:repository go_repository name=com_github_tidwall_gjson importpath=github.com/tidwall/gjson
+
 http_archive(
     name = "bazel_gazelle",
     sha256 = "efbbba6ac1a4fd342d5122cbdfdb82aeb2cf2862e35022c752eaddffada7c3f3",
@@ -27,7 +31,7 @@ go_rules_dependencies()
 
 go_register_toolchains(version = "1.18")
 
-load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
+load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
 
 gazelle_dependencies()
 
