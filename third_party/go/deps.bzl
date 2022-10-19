@@ -290,12 +290,6 @@ def go_dependencies():
         version = "v0.0.0-20191217153810-f85b25db303b",
     )
     go_repository(
-        name = "com_github_tidwall_gjson",
-        importpath = "github.com/tidwall/gjson",
-        sum = "h1:6aeJ0bzojgWLa82gDQHcx3S0Lr/O51I9bJ5nv6JFx5w=",
-        version = "v1.14.0",
-    )
-    go_repository(
         name = "com_github_tidwall_match",
         importpath = "github.com/tidwall/match",
         sum = "h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA=",
