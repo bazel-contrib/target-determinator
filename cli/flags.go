@@ -65,13 +65,14 @@ func (e *EnforceCleanFlag) Set(value string) error {
 }
 
 type CommonFlags struct {
-	WorkingDirectory     *string
-	BazelPath            *string
-	BazelStartupOpts     *MultipleStrings
-	EnforceCleanRepo     EnforceCleanFlag
-	DeleteCachedWorktree bool
-	IgnoredFiles         *IgnoreFileFlag
-	TargetsFlag          *string
+	WorkingDirectory           *string
+	BazelPath                  *string
+	BazelStartupOpts           *MultipleStrings
+	EnforceCleanRepo           EnforceCleanFlag
+	DeleteCachedWorktree       bool
+	IgnoredFiles               *IgnoreFileFlag
+	TargetsFlag                *string
+	AnalysisCacheClearStrategy *string
 }
 
 func StrPtr() *string {
@@ -81,13 +82,14 @@ func StrPtr() *string {
 
 func RegisterCommonFlags() *CommonFlags {
 	commonFlags := CommonFlags{
-		WorkingDirectory:     StrPtr(),
-		BazelPath:            StrPtr(),
-		BazelStartupOpts:     &MultipleStrings{},
-		EnforceCleanRepo:     AllowIgnored,
-		DeleteCachedWorktree: false,
-		IgnoredFiles:         &IgnoreFileFlag{},
-		TargetsFlag:          StrPtr(),
+		WorkingDirectory:           StrPtr(),
+		BazelPath:                  StrPtr(),
+		BazelStartupOpts:           &MultipleStrings{},
+		EnforceCleanRepo:           AllowIgnored,
+		DeleteCachedWorktree:       false,
+		IgnoredFiles:               &IgnoreFileFlag{},
+		TargetsFlag:                StrPtr(),
+		AnalysisCacheClearStrategy: StrPtr(),
 	}
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
 	flag.StringVar(commonFlags.BazelPath, "bazel", "bazel",
@@ -102,6 +104,7 @@ func RegisterCommonFlags() *CommonFlags {
 		"Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel graph.")
 	flag.StringVar(commonFlags.TargetsFlag, "targets", "//...",
 		"Targets to consider. Accepts any valid `bazel query` expression (see https://bazel.build/reference/query).")
+	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "shutdown", "Strategy for clearing the analysis cache. Accept values: shutdown,discard.")
 	return &commonFlags
 }
 
@@ -151,12 +154,13 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 	}
 
 	context := &pkg.Context{
-		WorkspacePath:        workingDirectory,
-		OriginalRevision:     afterRev,
-		BazelCmd:             bazelCmd,
-		BazelOutputBase:      outputBase,
-		DeleteCachedWorktree: commonFlags.DeleteCachedWorktree,
-		IgnoredFiles:         *commonFlags.IgnoredFiles,
+		WorkspacePath:              workingDirectory,
+		OriginalRevision:           afterRev,
+		BazelCmd:                   bazelCmd,
+		BazelOutputBase:            outputBase,
+		DeleteCachedWorktree:       commonFlags.DeleteCachedWorktree,
+		IgnoredFiles:               *commonFlags.IgnoredFiles,
+		AnalysisCacheClearStrategy: *commonFlags.AnalysisCacheClearStrategy,
 	}
 
 	// Non-context attributes
