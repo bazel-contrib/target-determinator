@@ -108,6 +108,15 @@ type Context struct {
 	DeleteCachedWorktree bool
 	// IgnoredFiles represents files that should be ignored for git operations.
 	IgnoredFiles []common.RelPath
+	// AnalysisCacheClearStrategy is the strategy used for clearing the Bazel analysis cache before cquery runs.
+	// Accepted values are: shutdown, discard.
+	//
+	// shutdown will shut down the bazel server before queries.
+	// discard will run a build with --discard_analysis_cache before queries.
+	//
+	// discard avoids a potentially costly JVM tear-down and start-up,
+	/// but seems to over-invalidate things (e.g. it seems to force re-fetching every rules_python whl_library which can be very expensive).
+	AnalysisCacheClearStrategy string
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
@@ -171,12 +180,13 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets TargetsList) (*QueryResults, func(), error) {
 	// Create a temporary context to allow the workspace path to point to a git worktree if necessary.
 	context = &Context{
-		WorkspacePath:        context.WorkspacePath,
-		OriginalRevision:     context.OriginalRevision,
-		BazelCmd:             context.BazelCmd,
-		BazelOutputBase:      context.BazelOutputBase,
-		DeleteCachedWorktree: context.DeleteCachedWorktree,
-		IgnoredFiles:         context.IgnoredFiles,
+		WorkspacePath:              context.WorkspacePath,
+		OriginalRevision:           context.OriginalRevision,
+		BazelCmd:                   context.BazelCmd,
+		BazelOutputBase:            context.BazelOutputBase,
+		DeleteCachedWorktree:       context.DeleteCachedWorktree,
+		IgnoredFiles:               context.IgnoredFiles,
+		AnalysisCacheClearStrategy: context.AnalysisCacheClearStrategy,
 	}
 	cleanupFunc := func() {}
 
@@ -526,34 +536,43 @@ type LabelAndConfiguration struct {
 }
 
 func clearAnalysisCache(context *Context) error {
-	// Discard the analysis cache:
-	{
-		var stderr bytes.Buffer
-
-		result, err := context.BazelCmd.Execute(
-			BazelCmdConfig{Dir: context.WorkspacePath, Stderr: &stderr},
-			"--output_base", context.BazelOutputBase, "build", "--discard_analysis_cache")
-
+	if context.AnalysisCacheClearStrategy == "shutdown" {
+		result, err := context.BazelCmd.Execute(BazelCmdConfig{Dir: context.WorkspacePath}, "--output_base", context.BazelOutputBase, "shutdown")
 		if result != 0 || err != nil {
-			return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr from Bazel ↓↓\n%v", context.WorkspacePath, err, stderr.String())
+			return fmt.Errorf("failed to discard Bazel analysis cache in %v", context.WorkspacePath)
 		}
-	}
+		return nil
+	} else if context.AnalysisCacheClearStrategy == "discard" {
+		{
+			var stderr bytes.Buffer
 
-	// --discard_analysis_cache defers some of its cleanup to the start of the next build.
-	// Perform a no-op build to flush any in-build state from the previous one.
-	{
-		var stderr bytes.Buffer
+			result, err := context.BazelCmd.Execute(
+				BazelCmdConfig{Dir: context.WorkspacePath, Stderr: &stderr},
+				"--output_base", context.BazelOutputBase, "build", "--discard_analysis_cache")
 
-		result, err := context.BazelCmd.Execute(
-			BazelCmdConfig{Dir: context.WorkspacePath, Stderr: &stderr},
-			"--output_base", context.BazelOutputBase, "build")
-
-		if result != 0 || err != nil {
-			return fmt.Errorf("failed to run no-op build after discarding Bazel analysis cache in %v: %w. Stderr:\n%v",
-				context.WorkspacePath, err, stderr.String())
+			if result != 0 || err != nil {
+				return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr from Bazel ↓↓\n%v", context.WorkspacePath, err, stderr.String())
+			}
 		}
+
+		// --discard_analysis_cache defers some of its cleanup to the start of the next build.
+		// Perform a no-op build to flush any in-build state from the previous one.
+		{
+			var stderr bytes.Buffer
+
+			result, err := context.BazelCmd.Execute(
+				BazelCmdConfig{Dir: context.WorkspacePath, Stderr: &stderr},
+				"--output_base", context.BazelOutputBase, "build")
+
+			if result != 0 || err != nil {
+				return fmt.Errorf("failed to run no-op build after discarding Bazel analysis cache in %v: %w. Stderr:\n%v",
+					context.WorkspacePath, err, stderr.String())
+			}
+		}
+		return nil
+	} else {
+		return fmt.Errorf("unrecognized analysis cache discard strategy: %v", context.AnalysisCacheClearStrategy)
 	}
-	return nil
 }
 
 func BazelOutputBase(workingDirectory string, BazelCmd BazelCmd) (string, error) {
