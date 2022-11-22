@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/user"
 	path2 "path"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -117,6 +118,10 @@ type Context struct {
 	// discard avoids a potentially costly JVM tear-down and start-up,
 	/// but seems to over-invalidate things (e.g. it seems to force re-fetching every rules_python whl_library which can be very expensive).
 	AnalysisCacheClearStrategy string
+	// CompareQueriesAroundAnalysisCacheClear controls whether we validate whether clearing the analysis cache had any meaningful effect.
+	// We suspect that clearing the analysis cache is now unnecessary, as cquery behaves more reasonably around not returning stale results.
+	// This flag allows validating whether that is the case.
+	CompareQueriesAroundAnalysisCacheClear bool
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
@@ -180,13 +185,14 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets TargetsList) (*QueryResults, func(), error) {
 	// Create a temporary context to allow the workspace path to point to a git worktree if necessary.
 	context = &Context{
-		WorkspacePath:              context.WorkspacePath,
-		OriginalRevision:           context.OriginalRevision,
-		BazelCmd:                   context.BazelCmd,
-		BazelOutputBase:            context.BazelOutputBase,
-		DeleteCachedWorktree:       context.DeleteCachedWorktree,
-		IgnoredFiles:               context.IgnoredFiles,
-		AnalysisCacheClearStrategy: context.AnalysisCacheClearStrategy,
+		WorkspacePath:                          context.WorkspacePath,
+		OriginalRevision:                       context.OriginalRevision,
+		BazelCmd:                               context.BazelCmd,
+		BazelOutputBase:                        context.BazelOutputBase,
+		DeleteCachedWorktree:                   context.DeleteCachedWorktree,
+		IgnoredFiles:                           context.IgnoredFiles,
+		AnalysisCacheClearStrategy:             context.AnalysisCacheClearStrategy,
+		CompareQueriesAroundAnalysisCacheClear: context.CompareQueriesAroundAnalysisCacheClear,
 	}
 	cleanupFunc := func() {}
 
@@ -211,6 +217,15 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 		}
 	}
 
+	var queryInfoBeforeClear *QueryResults
+	if context.CompareQueriesAroundAnalysisCacheClear {
+		var err error
+		queryInfoBeforeClear, err = doQueryDeps(context, targets)
+		if err != nil {
+			return queryInfoBeforeClear, cleanupFunc, fmt.Errorf("failed to query[before] at %s in %v: %w", rev, context.WorkspacePath, err)
+		}
+	}
+
 	// Clear analysis cache before each query, as cquery configurations leak across invocations.
 	// See https://github.com/bazelbuild/bazel/issues/14725
 	if err := clearAnalysisCache(context); err != nil {
@@ -221,6 +236,16 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 	if err != nil {
 		return queryInfo, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, context.WorkspacePath, err)
 	}
+
+	if context.CompareQueriesAroundAnalysisCacheClear {
+		if !reflect.DeepEqual(queryInfoBeforeClear.MatchingTargets, queryInfo.MatchingTargets) {
+			return nil, cleanupFunc, fmt.Errorf("inconsistent cquery results before and after analysis cache clear: MatchingTargets")
+		}
+		if !reflect.DeepEqual(queryInfoBeforeClear.TransitiveConfiguredTargets, queryInfo.TransitiveConfiguredTargets) {
+			return nil, cleanupFunc, fmt.Errorf("inconsistent cquery results before and after analysis cache clear: TransitiveConfiguredTargets")
+		}
+	}
+
 	return queryInfo, cleanupFunc, nil
 }
 

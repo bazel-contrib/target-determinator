@@ -65,14 +65,15 @@ func (e *EnforceCleanFlag) Set(value string) error {
 }
 
 type CommonFlags struct {
-	WorkingDirectory           *string
-	BazelPath                  *string
-	BazelStartupOpts           *MultipleStrings
-	EnforceCleanRepo           EnforceCleanFlag
-	DeleteCachedWorktree       bool
-	IgnoredFiles               *IgnoreFileFlag
-	TargetsFlag                *string
-	AnalysisCacheClearStrategy *string
+	WorkingDirectory                       *string
+	BazelPath                              *string
+	BazelStartupOpts                       *MultipleStrings
+	EnforceCleanRepo                       EnforceCleanFlag
+	DeleteCachedWorktree                   bool
+	IgnoredFiles                           *IgnoreFileFlag
+	TargetsFlag                            *string
+	AnalysisCacheClearStrategy             *string
+	CompareQueriesAroundAnalysisCacheClear bool
 }
 
 func StrPtr() *string {
@@ -82,14 +83,15 @@ func StrPtr() *string {
 
 func RegisterCommonFlags() *CommonFlags {
 	commonFlags := CommonFlags{
-		WorkingDirectory:           StrPtr(),
-		BazelPath:                  StrPtr(),
-		BazelStartupOpts:           &MultipleStrings{},
-		EnforceCleanRepo:           AllowIgnored,
-		DeleteCachedWorktree:       false,
-		IgnoredFiles:               &IgnoreFileFlag{},
-		TargetsFlag:                StrPtr(),
-		AnalysisCacheClearStrategy: StrPtr(),
+		WorkingDirectory:                       StrPtr(),
+		BazelPath:                              StrPtr(),
+		BazelStartupOpts:                       &MultipleStrings{},
+		EnforceCleanRepo:                       AllowIgnored,
+		DeleteCachedWorktree:                   false,
+		IgnoredFiles:                           &IgnoreFileFlag{},
+		TargetsFlag:                            StrPtr(),
+		AnalysisCacheClearStrategy:             StrPtr(),
+		CompareQueriesAroundAnalysisCacheClear: false,
 	}
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
 	flag.StringVar(commonFlags.BazelPath, "bazel", "bazel",
@@ -105,6 +107,7 @@ func RegisterCommonFlags() *CommonFlags {
 	flag.StringVar(commonFlags.TargetsFlag, "targets", "//...",
 		"Targets to consider. Accepts any valid `bazel query` expression (see https://bazel.build/reference/query).")
 	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "shutdown", "Strategy for clearing the analysis cache. Accept values: shutdown,discard.")
+	flag.BoolVar(&commonFlags.CompareQueriesAroundAnalysisCacheClear, "compare-queries-around-analysis-cache-clear", false, "Whether to check for query result differences before and after analysis cache clears. This is a temporary flag for performing real-world analysis.")
 	return &commonFlags
 }
 
@@ -154,13 +157,14 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 	}
 
 	context := &pkg.Context{
-		WorkspacePath:              workingDirectory,
-		OriginalRevision:           afterRev,
-		BazelCmd:                   bazelCmd,
-		BazelOutputBase:            outputBase,
-		DeleteCachedWorktree:       commonFlags.DeleteCachedWorktree,
-		IgnoredFiles:               *commonFlags.IgnoredFiles,
-		AnalysisCacheClearStrategy: *commonFlags.AnalysisCacheClearStrategy,
+		WorkspacePath:                          workingDirectory,
+		OriginalRevision:                       afterRev,
+		BazelCmd:                               bazelCmd,
+		BazelOutputBase:                        outputBase,
+		DeleteCachedWorktree:                   commonFlags.DeleteCachedWorktree,
+		IgnoredFiles:                           *commonFlags.IgnoredFiles,
+		AnalysisCacheClearStrategy:             *commonFlags.AnalysisCacheClearStrategy,
+		CompareQueriesAroundAnalysisCacheClear: commonFlags.CompareQueriesAroundAnalysisCacheClear,
 	}
 
 	// Non-context attributes
