@@ -132,7 +132,7 @@ func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledG
 		if queryInfoBefore == nil {
 			return nil, nil, err
 		} else {
-			log.Printf("A query error occurred quering %s - ignoring the error and treating all matching targets from the '%s' revision as affected.", revBefore, revAfter.Label)
+			log.Printf("A query error occurred querying %s - ignoring the error and treating all matching targets from the '%s' revision as affected. Error querying: %v", revBefore, revAfter.Label, err)
 		}
 	}
 
