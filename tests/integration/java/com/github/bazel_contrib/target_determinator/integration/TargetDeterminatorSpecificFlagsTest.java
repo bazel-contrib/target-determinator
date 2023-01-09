@@ -193,7 +193,6 @@ public class TargetDeterminatorSpecificFlagsTest {
     final List<String> args = Stream.concat(
         Stream.of("--working-directory",
             testDir.toString(),
-            "--analysis-cache-clear-strategy=discard",
             "--bazel", "bazelisk",
             "--targets", targets
         ),

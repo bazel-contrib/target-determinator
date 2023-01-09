@@ -110,7 +110,10 @@ type Context struct {
 	// IgnoredFiles represents files that should be ignored for git operations.
 	IgnoredFiles []common.RelPath
 	// AnalysisCacheClearStrategy is the strategy used for clearing the Bazel analysis cache before cquery runs.
-	// Accepted values are: shutdown, discard.
+	// Accepted values are: skip, shutdown, discard.
+	// We currently don't believe clearing this cache is necessary.
+	//
+	// skip will not clear the analysis cache between cquery runs.
 	//
 	// shutdown will shut down the bazel server before queries.
 	// discard will run a build with --discard_analysis_cache before queries.
@@ -561,7 +564,9 @@ type LabelAndConfiguration struct {
 }
 
 func clearAnalysisCache(context *Context) error {
-	if context.AnalysisCacheClearStrategy == "shutdown" {
+	if context.AnalysisCacheClearStrategy == "skip" {
+		return nil
+	} else if context.AnalysisCacheClearStrategy == "shutdown" {
 		result, err := context.BazelCmd.Execute(BazelCmdConfig{Dir: context.WorkspacePath}, "--output_base", context.BazelOutputBase, "shutdown")
 		if result != 0 || err != nil {
 			return fmt.Errorf("failed to discard Bazel analysis cache in %v", context.WorkspacePath)

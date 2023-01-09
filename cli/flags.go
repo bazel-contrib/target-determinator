@@ -106,7 +106,7 @@ func RegisterCommonFlags() *CommonFlags {
 		"Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel graph.")
 	flag.StringVar(commonFlags.TargetsFlag, "targets", "//...",
 		"Targets to consider. Accepts any valid `bazel query` expression (see https://bazel.build/reference/query).")
-	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "shutdown", "Strategy for clearing the analysis cache. Accept values: shutdown,discard.")
+	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "skip", "Strategy for clearing the analysis cache. Accept values: skip,shutdown,discard.")
 	flag.BoolVar(&commonFlags.CompareQueriesAroundAnalysisCacheClear, "compare-queries-around-analysis-cache-clear", false, "Whether to check for query result differences before and after analysis cache clears. This is a temporary flag for performing real-world analysis.")
 	return &commonFlags
 }
