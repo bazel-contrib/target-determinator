@@ -567,7 +567,7 @@ func clearAnalysisCache(context *Context) error {
 	if context.AnalysisCacheClearStrategy == "skip" {
 		return nil
 	} else if context.AnalysisCacheClearStrategy == "shutdown" {
-		result, err := context.BazelCmd.Execute(BazelCmdConfig{Dir: context.WorkspacePath}, "--output_base", context.BazelOutputBase, "shutdown")
+		result, err := context.BazelCmd.Execute(BazelCmdConfig{Dir: context.WorkspacePath}, []string{"--output_base", context.BazelOutputBase}, "shutdown")
 		if result != 0 || err != nil {
 			return fmt.Errorf("failed to discard Bazel analysis cache in %v", context.WorkspacePath)
 		}
@@ -578,7 +578,7 @@ func clearAnalysisCache(context *Context) error {
 
 			result, err := context.BazelCmd.Execute(
 				BazelCmdConfig{Dir: context.WorkspacePath, Stderr: &stderr},
-				"--output_base", context.BazelOutputBase, "build", "--discard_analysis_cache")
+				[]string{"--output_base", context.BazelOutputBase}, "build", "--discard_analysis_cache")
 
 			if result != 0 || err != nil {
 				return fmt.Errorf("failed to discard Bazel analysis cache in %v: %w. Stderr from Bazel ↓↓\n%v", context.WorkspacePath, err, stderr.String())
@@ -592,7 +592,7 @@ func clearAnalysisCache(context *Context) error {
 
 			result, err := context.BazelCmd.Execute(
 				BazelCmdConfig{Dir: context.WorkspacePath, Stderr: &stderr},
-				"--output_base", context.BazelOutputBase, "build")
+				[]string{"--output_base", context.BazelOutputBase}, "build")
 
 			if result != 0 || err != nil {
 				return fmt.Errorf("failed to run no-op build after discarding Bazel analysis cache in %v: %w. Stderr:\n%v",
@@ -618,7 +618,7 @@ func bazelInfo(workingDirectory string, bazelCmd BazelCmd, key string) (string, 
 
 	result, err := bazelCmd.Execute(
 		BazelCmdConfig{Dir: workingDirectory, Stdout: &stdoutBuf, Stderr: &stderrBuf},
-		"info", key)
+		nil, "info", key)
 
 	if result != 0 || err != nil {
 		return "", fmt.Errorf("failed to get the Bazel %v: %w. Stderr:\n%v", key, err, stderrBuf.String())
@@ -708,7 +708,7 @@ func runToCqueryResult(context *Context, pattern string) (*analysis.CqueryResult
 
 	returnVal, err := context.BazelCmd.Execute(
 		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
-		"--output_base", context.BazelOutputBase, "cquery", "--output=proto", pattern)
+		[]string{"--output_base", context.BazelOutputBase}, "cquery", "--output=proto", pattern)
 
 	if returnVal != 0 || err != nil {
 		return nil, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
