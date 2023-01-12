@@ -111,7 +111,7 @@ func main() {
 	log.Printf("Running %s on %d targets", commandVerb, len(targets))
 	result, err := config.Context.BazelCmd.Execute(
 		pkg.BazelCmdConfig{Dir: config.Context.WorkspacePath, Stdout: os.Stdout, Stderr: os.Stderr},
-		commandVerb, "--target_pattern_file", targetPatternFile.Name())
+		nil, commandVerb, "--target_pattern_file", targetPatternFile.Name())
 
 	if result != 0 || err != nil {
 		log.Fatal(err)

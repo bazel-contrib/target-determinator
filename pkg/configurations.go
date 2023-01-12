@@ -35,7 +35,7 @@ func getConfigurationDetails(context *Context) (map[Configuration]singleConfigur
 
 	returnVal, err := context.BazelCmd.Execute(
 		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
-		"--output_base", context.BazelOutputBase, "config", "--output=json", "--dump_all")
+		[]string{"--output_base", context.BazelOutputBase}, "config", "--output=json", "--dump_all")
 
 	if returnVal != 0 || err != nil {
 		return nil, fmt.Errorf("failed to run bazel config --output=json --dump_all: %w. Stderr:\n%v", err, stderr.String())
