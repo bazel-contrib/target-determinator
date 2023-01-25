@@ -109,6 +109,11 @@ type Context struct {
 	DeleteCachedWorktree bool
 	// IgnoredFiles represents files that should be ignored for git operations.
 	IgnoredFiles []common.RelPath
+	// BeforeQueryErrorBehavior describes how to handle errors when querying the "before" revision.
+	// Accepted values are:
+	// - "fatal" - treat an error querying as fatal.
+	// - "ignore-and-build-all" - ignore the error, and build all targets at the "after" revision.
+	BeforeQueryErrorBehavior string
 	// AnalysisCacheClearStrategy is the strategy used for clearing the Bazel analysis cache before cquery runs.
 	// Accepted values are: skip, shutdown, discard.
 	// We currently don't believe clearing this cache is necessary.
@@ -135,7 +140,11 @@ func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledG
 		if queryInfoBefore == nil {
 			return nil, nil, err
 		} else {
-			log.Printf("A query error occurred querying %s - ignoring the error and treating all matching targets from the '%s' revision as affected. Error querying: %v", revBefore, revAfter.Label, err)
+			if context.BeforeQueryErrorBehavior == "ignore-and-build-all" {
+				log.Printf("A query error occurred querying %s - ignoring the error and treating all matching targets from the '%s' revision as affected. Error querying: %v", revBefore, revAfter.Label, err)
+			} else {
+				return nil, nil, fmt.Errorf("error occurred querying %s: %w", revBefore, err)
+			}
 		}
 	}
 
@@ -194,6 +203,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 		BazelOutputBase:                        context.BazelOutputBase,
 		DeleteCachedWorktree:                   context.DeleteCachedWorktree,
 		IgnoredFiles:                           context.IgnoredFiles,
+		BeforeQueryErrorBehavior:               context.BeforeQueryErrorBehavior,
 		AnalysisCacheClearStrategy:             context.AnalysisCacheClearStrategy,
 		CompareQueriesAroundAnalysisCacheClear: context.CompareQueriesAroundAnalysisCacheClear,
 	}

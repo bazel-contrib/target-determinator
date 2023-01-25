@@ -55,7 +55,7 @@ public class TargetDeterminator {
     }
     processBuilder.directory(workingDirectory.toFile());
     processBuilder.redirectOutput(Redirect.PIPE);
-    processBuilder.redirectError(Redirect.INHERIT);
+    processBuilder.redirectError(Redirect.PIPE);
     // Do not clean the environment, so we can inherit variables passed e.g. via --test_env.
     // Useful for CC (needed by bazel).
     processBuilder.environment().put("HOME", System.getProperty("user.home"));
@@ -63,13 +63,15 @@ public class TargetDeterminator {
     try {
       Process process = processBuilder.start();
       final String output = new String(ByteStreams.toByteArray(process.getInputStream()), StandardCharsets.UTF_8);
+      final String stderr = new String(ByteStreams.toByteArray(process.getErrorStream()), StandardCharsets.UTF_8);
       final int returnCode = process.waitFor();
       if (returnCode != 0) {
         throw new TargetComputationErrorException(
             String.format(
                 "Expected exit code 0 when running %s but got: %d",
                 Joiner.on(" ").join(argv), returnCode),
-            output);
+            output,
+            stderr);
       }
       return output;
     } catch (IOException | InterruptedException e) {

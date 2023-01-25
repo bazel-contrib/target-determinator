@@ -3,17 +3,26 @@ package com.github.bazel_contrib.target_determinator.integration;
 /** TargetComputationErrorException represents an error when computing targets. */
 class TargetComputationErrorException extends Exception {
 
-  private final String output;
+  private final String stdout;
+  private final String stderr;
 
   /**
-   * getOutput returns the stdout of the failed command.
+   * getStdout returns the stdout of the failed command.
    */
-  public String getOutput() {
-    return output;
+  public String getStdout() {
+    return stdout;
   }
 
-  public TargetComputationErrorException(String errorMessage, String output) {
+  /**
+   * getStderr returns the stdout of the failed command.
+   */
+  public String getStderr() {
+    return stderr;
+  }
+
+  public TargetComputationErrorException(String errorMessage, String stdout, String stderr) {
     super(errorMessage);
-    this.output = output;
+    this.stdout = stdout;
+    this.stderr = stderr;
   }
 }

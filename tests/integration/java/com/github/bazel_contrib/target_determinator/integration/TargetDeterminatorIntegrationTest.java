@@ -99,7 +99,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
           Commits.REDUCE_DEPENDENCY_VISIBILITY,
           Set.of("//NotApplicable"));
     } catch (TargetComputationErrorException e) {
-      assertThat(e.getOutput(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
       return;
     }
     fail("Expected target-determinator command to fail but it succeeded");
