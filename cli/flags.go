@@ -72,6 +72,7 @@ type CommonFlags struct {
 	EnforceCleanRepo                       EnforceCleanFlag
 	DeleteCachedWorktree                   bool
 	IgnoredFiles                           *IgnoreFileFlag
+	BeforeQueryErrorBehavior               *string
 	TargetsFlag                            *string
 	AnalysisCacheClearStrategy             *string
 	CompareQueriesAroundAnalysisCacheClear bool
@@ -91,6 +92,7 @@ func RegisterCommonFlags() *CommonFlags {
 		EnforceCleanRepo:                       AllowIgnored,
 		DeleteCachedWorktree:                   false,
 		IgnoredFiles:                           &IgnoreFileFlag{},
+		BeforeQueryErrorBehavior:               StrPtr(),
 		TargetsFlag:                            StrPtr(),
 		AnalysisCacheClearStrategy:             StrPtr(),
 		CompareQueriesAroundAnalysisCacheClear: false,
@@ -107,9 +109,10 @@ func RegisterCommonFlags() *CommonFlags {
 		"Delete created worktrees after use when created. Keeping them can make subsequent invocations faster.")
 	flag.Var(commonFlags.IgnoredFiles, "ignore-file",
 		"Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel graph.")
+	flag.StringVar(commonFlags.BeforeQueryErrorBehavior, "before-query-error-behavior", "ignore-and-build-all", "How to behave if the 'before' revision query fails. Accepted values: fatal,ignore-and-build-all")
 	flag.StringVar(commonFlags.TargetsFlag, "targets", "//...",
 		"Targets to consider. Accepts any valid `bazel query` expression (see https://bazel.build/reference/query).")
-	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "skip", "Strategy for clearing the analysis cache. Accept values: skip,shutdown,discard.")
+	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "skip", "Strategy for clearing the analysis cache. Accepted values: skip,shutdown,discard.")
 	flag.BoolVar(&commonFlags.CompareQueriesAroundAnalysisCacheClear, "compare-queries-around-analysis-cache-clear", false, "Whether to check for query result differences before and after analysis cache clears. This is a temporary flag for performing real-world analysis.")
 	return &commonFlags
 }
@@ -167,6 +170,7 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 		BazelOutputBase:                        outputBase,
 		DeleteCachedWorktree:                   commonFlags.DeleteCachedWorktree,
 		IgnoredFiles:                           *commonFlags.IgnoredFiles,
+		BeforeQueryErrorBehavior:               *commonFlags.BeforeQueryErrorBehavior,
 		AnalysisCacheClearStrategy:             *commonFlags.AnalysisCacheClearStrategy,
 		CompareQueriesAroundAnalysisCacheClear: commonFlags.CompareQueriesAroundAnalysisCacheClear,
 	}

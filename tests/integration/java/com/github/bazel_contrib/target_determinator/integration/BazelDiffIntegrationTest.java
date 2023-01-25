@@ -64,6 +64,7 @@ public class BazelDiffIntegrationTest extends Tests {
       if (processBuilder.start().waitFor() != 0) {
         throw new TargetComputationErrorException(
             String.format("Expected exit code 0 when running %s", Joiner.on(" ").join(argv)),
+            "",
             "");
       }
     } catch (IOException | InterruptedException e) {

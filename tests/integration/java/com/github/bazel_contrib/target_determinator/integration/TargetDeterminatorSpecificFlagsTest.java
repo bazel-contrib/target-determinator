@@ -100,6 +100,18 @@ public class TargetDeterminatorSpecificFlagsTest {
   }
 
   @Test
+  public void targetPatternFlagQueryBeforeWasErrorWhenFatal() throws Exception {
+    TestdataRepo.gitCheckout(testDir, Commits.ONE_TEST);
+    try {
+      String output = getOutput(Commits.NO_TARGETS, "//java/...", false, true, List.of("--before-query-error-behavior=fatal"));
+      fail(String.format("Expected exception but got successful output: %s", output));
+    } catch (TargetComputationErrorException e) {
+      assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStderr(), containsString("failed to query at revision 'before'"));
+    }
+  }
+
+  @Test
   public void failForUncleanRepositoryWithEnforceClean() throws Exception {
     TestdataRepo.gitCheckout(testDir, Commits.HAS_JVM_FLAGS);
 
@@ -109,7 +121,7 @@ public class TargetDeterminatorSpecificFlagsTest {
       getTargets(Commits.TWO_TESTS, "//...", true, true);
       fail("Expected target-determinator command to fail but it succeeded");
     } catch (TargetComputationErrorException e) {
-      assertThat(e.getOutput(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
     }
   }
 
@@ -137,7 +149,7 @@ public class TargetDeterminatorSpecificFlagsTest {
           "//...", true, true);
       fail("Expected target-determinator command to fail but it succeeded");
     } catch (TargetComputationErrorException e) {
-      assertThat(e.getOutput(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
     }
   }
 
