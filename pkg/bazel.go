@@ -32,6 +32,7 @@ type DefaultBazelCmd struct {
 var _buildLikeCommands = map[string]struct{}{
 	"build":  {},
 	"cquery": {},
+	"test":   {},
 }
 
 // Execute calls bazel with the provided arguments.
