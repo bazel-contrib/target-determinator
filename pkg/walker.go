@@ -33,7 +33,7 @@ func WalkAffectedTargets(context *Context, revBefore LabelledGitRev, targets Tar
 	}
 
 	for _, l := range afterMetadata.MatchingTargets.Labels() {
-		if err := DiffSingleLabel(beforeMetadata, afterMetadata, includeDifferences, l, callback); err != nil {
+		if err := diffSingleLabel(context, beforeMetadata, afterMetadata, includeDifferences, l, callback); err != nil {
 			return err
 		}
 	}
@@ -41,8 +41,11 @@ func WalkAffectedTargets(context *Context, revBefore LabelledGitRev, targets Tar
 	return nil
 }
 
-func DiffSingleLabel(beforeMetadata, afterMetadata *QueryResults, includeDifferences bool, label label.Label, callback WalkCallback) error {
+func diffSingleLabel(context *Context, beforeMetadata, afterMetadata *QueryResults, includeDifferences bool, label label.Label, callback WalkCallback) error {
 	for _, configuration := range afterMetadata.MatchingTargets.ConfigurationsFor(label) {
+		if !hasConfiguredTarget(context, label, configuration) {
+			continue
+		}
 		configuredTarget := afterMetadata.TransitiveConfiguredTargets[label][configuration]
 
 		var differences []Difference
@@ -115,4 +118,14 @@ func DiffSingleLabel(beforeMetadata, afterMetadata *QueryResults, includeDiffere
 		}
 	}
 	return nil
+}
+
+func hasConfiguredTarget(context *Context, label label.Label, configuration Configuration) bool {
+	// Calling "bazel cquery config(<label>, configuration)" attempts to find the
+	// configured target for the label. If no results can be found, the query fails:
+	// https://bazel.build/query/cquery#config
+	_, err := context.BazelCmd.Execute(
+		BazelCmdConfig{Dir: context.WorkspacePath},
+		[]string{"--output_base", context.BazelOutputBase}, "cquery", fmt.Sprintf("config(%s,%s)", label, configuration))
+	return err == nil
 }
