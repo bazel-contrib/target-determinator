@@ -31,6 +31,7 @@ type DefaultBazelCmd struct {
 // This is an incomplete list, but includes all of the commands we actually use in the target determinator.
 var _buildLikeCommands = map[string]struct{}{
 	"build":  {},
+	"config": {},
 	"cquery": {},
 	"test":   {},
 }
