@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
@@ -352,10 +353,10 @@ func gitStatus(workingDirectory string) ([]GitFileStatus, error) {
 // function returns the path to the new worktree, otherwise an empty string is returned.
 //
 // A new worktree is created in the following cases:
-// - the original worktree is unclean (non-ignored untracked files or tracked local changes).
-// - upon checking out the new revision, the worktree is unclean. This can happen when a submodule
-//   was moved or removed between the current and target commit, or when the contents of the
-//  .gitignore file changes.
+//   - the original worktree is unclean (non-ignored untracked files or tracked local changes).
+//   - upon checking out the new revision, the worktree is unclean. This can happen when a submodule
+//     was moved or removed between the current and target commit, or when the contents of the
+//     .gitignore file changes.
 //
 // When a worktree is created, the repository present in workingDirectory may or may not have
 // the rev revision checked out.
@@ -675,7 +676,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	labels := make([]label.Label, 0)
 	labelsToConfigurations := make(map[label.Label][]Configuration)
 	for _, mt := range matchingTargetResults.Results {
-		l, err := labelOf(mt.Target)
+		l, err := targetLabel(mt.Target)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
 		}
@@ -730,7 +731,44 @@ func runToCqueryResult(context *Context, pattern string) (*analysis.CqueryResult
 	if err := proto.Unmarshal(content, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cquery stdout: %w", err)
 	}
+
+	compatibleTargets, err := findCompatibleTargets(context, pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter out incompatible targets.
+	n := 0
+	for _, ct := range result.Results {
+		if compatibleTargets[targetName(ct.Target)] {
+			result.Results[n] = ct
+			n++
+		}
+	}
+	result.Results = result.Results[0:n]
 	return &result, nil
+}
+
+func findCompatibleTargets(context *Context, pattern string) (map[string]bool, error) {
+	log.Printf("Finding compatible targets under %s", pattern)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	returnVal, err := context.BazelCmd.Execute(
+		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
+		[]string{"--output_base", context.BazelOutputBase}, "cquery", pattern,
+		"--output=starlark",
+		"--starlark:expr=target.label if \"IncompatiblePlatformProvider\" not in providers(target) else \"\"",
+	)
+	if returnVal != 0 || err != nil {
+		return nil, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+	}
+
+	compatibleTargets := make(map[string]bool)
+	scanner := bufio.NewScanner(&stdout)
+	for scanner.Scan() {
+		compatibleTargets[scanner.Text()] = true
+	}
+	return compatibleTargets, nil
 }
 
 // MatchingTargets stores the top-level targets within a repository,
@@ -773,7 +811,7 @@ func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Confi
 	configuredTargets := make(map[label.Label]map[Configuration]*analysis.ConfiguredTarget, len(result.Results))
 
 	for _, target := range result.Results {
-		l, err := labelOf(target.GetTarget())
+		l, err := targetLabel(target.GetTarget())
 		if err != nil {
 			return nil, err
 		}
@@ -788,21 +826,25 @@ func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Confi
 	return configuredTargets, nil
 }
 
-func labelOf(target *build.Target) (label.Label, error) {
+func targetName(target *build.Target) string {
 	switch target.GetType() {
 	case build.Target_RULE:
-		return ParseCanonicalLabel(target.GetRule().GetName())
+		return target.GetRule().GetName()
 	case build.Target_SOURCE_FILE:
-		return ParseCanonicalLabel(target.GetSourceFile().GetName())
+		return target.GetSourceFile().GetName()
 	case build.Target_GENERATED_FILE:
-		return ParseCanonicalLabel(target.GetGeneratedFile().GetName())
+		return target.GetGeneratedFile().GetName()
 	case build.Target_PACKAGE_GROUP:
-		return ParseCanonicalLabel(target.GetPackageGroup().GetName())
+		return target.GetPackageGroup().GetName()
 	case build.Target_ENVIRONMENT_GROUP:
-		return ParseCanonicalLabel(target.GetEnvironmentGroup().GetName())
+		return target.GetEnvironmentGroup().GetName()
 	default:
-		return label.NoLabel, fmt.Errorf("labelOf called on unknown target type: %v", target.GetType().String())
+		return ""
 	}
+}
+
+func targetLabel(target *build.Target) (label.Label, error) {
+	return label.Parse(targetName(target))
 }
 
 func equivalentAttributes(left, right *build.Attribute) bool {
@@ -812,10 +854,10 @@ func equivalentAttributes(left, right *build.Attribute) bool {
 // AttributeForSerialization redacts details about an attribute which don't affect the output of
 // building them, and returns equivalent canonical attribute metadata.
 // In particular it redacts:
-//  * Whether an attribute was explicitly specified (because the effective value is all that
-//    matters).
-//  * Any attribute named `generator_location`, because these point to absolute paths for
-//    built-in `cc_toolchain_suite` targets such as `@local_config_cc//:toolchain`.
+//   - Whether an attribute was explicitly specified (because the effective value is all that
+//     matters).
+//   - Any attribute named `generator_location`, because these point to absolute paths for
+//     built-in `cc_toolchain_suite` targets such as `@local_config_cc//:toolchain`.
 func AttributeForSerialization(rawAttr *build.Attribute) *build.Attribute {
 	normalized := *rawAttr
 	normalized.ExplicitlySpecified = nil
