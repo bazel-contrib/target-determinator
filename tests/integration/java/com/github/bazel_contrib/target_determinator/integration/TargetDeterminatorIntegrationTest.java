@@ -20,6 +20,8 @@ public class TargetDeterminatorIntegrationTest extends Tests {
         workspace.toString(),
         "--bazel",
         "bazelisk",
+        "--bazel-opts",
+        "--java_runtime_version=remotejdk_11",
         "--ignore-file",
         ignoredDirectoryName,
         "--delete-cached-worktree",
