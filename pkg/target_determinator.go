@@ -131,6 +131,8 @@ type Context struct {
 	// We suspect that clearing the analysis cache is now unnecessary, as cquery behaves more reasonably around not returning stale results.
 	// This flag allows validating whether that is the case.
 	CompareQueriesAroundAnalysisCacheClear bool
+	// FilterIncompatibleTargets controls whether we filter out incompatible targets from the candidate set of affected targets.
+	FilterIncompatibleTargets bool
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
@@ -207,6 +209,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 		BeforeQueryErrorBehavior:               context.BeforeQueryErrorBehavior,
 		AnalysisCacheClearStrategy:             context.AnalysisCacheClearStrategy,
 		CompareQueriesAroundAnalysisCacheClear: context.CompareQueriesAroundAnalysisCacheClear,
+		FilterIncompatibleTargets:              context.FilterIncompatibleTargets,
 	}
 	cleanupFunc := func() {}
 
@@ -672,9 +675,11 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
 
-	compatibleTargets, err := findCompatibleTargets(context, targets.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to find compatible targets: %w", err)
+	var compatibleTargets map[string]bool
+	if context.FilterIncompatibleTargets {
+		if compatibleTargets, err = findCompatibleTargets(context, targets.String()); err != nil {
+			return nil, fmt.Errorf("failed to find compatible targets: %w", err)
+		}
 	}
 
 	log.Println("Matching labels to configurations")
@@ -685,7 +690,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
 		}
-		if !compatibleTargets[l.String()] {
+		if context.FilterIncompatibleTargets && !compatibleTargets[l.String()] {
 			continue // Ignore incompatible targets
 		}
 		labels = append(labels, l)
