@@ -760,7 +760,7 @@ func findCompatibleTargets(context *Context, pattern string) (map[string]bool, e
 		"--starlark:expr=target.label if \"IncompatiblePlatformProvider\" not in providers(target) else \"\"",
 	)
 	if returnVal != 0 || err != nil {
-		return nil, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+		return nil, fmt.Errorf("failed to run compatibility-filtering cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
 	}
 
 	compatibleTargets := make(map[string]bool)
