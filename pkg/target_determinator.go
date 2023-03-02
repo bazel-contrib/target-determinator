@@ -672,13 +672,21 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
 
+	compatibleTargets, err := findCompatibleTargets(context, targets.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to find compatible targets: %w", err)
+	}
+
 	log.Println("Matching labels to configurations")
 	labels := make([]label.Label, 0)
 	labelsToConfigurations := make(map[label.Label][]Configuration)
 	for _, mt := range matchingTargetResults.Results {
-		l, err := targetLabel(mt.Target)
+		l, err := labelOf(mt.Target)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
+		}
+		if !compatibleTargets[l.String()] {
+			continue // Ignore incompatible targets
 		}
 		labels = append(labels, l)
 
@@ -731,21 +739,6 @@ func runToCqueryResult(context *Context, pattern string) (*analysis.CqueryResult
 	if err := proto.Unmarshal(content, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cquery stdout: %w", err)
 	}
-
-	compatibleTargets, err := findCompatibleTargets(context, pattern)
-	if err != nil {
-		return nil, err
-	}
-
-	// Filter out incompatible targets.
-	n := 0
-	for _, ct := range result.Results {
-		if compatibleTargets[targetName(ct.Target)] {
-			result.Results[n] = ct
-			n++
-		}
-	}
-	result.Results = result.Results[0:n]
 	return &result, nil
 }
 
@@ -811,7 +804,7 @@ func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Confi
 	configuredTargets := make(map[label.Label]map[Configuration]*analysis.ConfiguredTarget, len(result.Results))
 
 	for _, target := range result.Results {
-		l, err := targetLabel(target.GetTarget())
+		l, err := labelOf(target.GetTarget())
 		if err != nil {
 			return nil, err
 		}
@@ -826,25 +819,21 @@ func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Confi
 	return configuredTargets, nil
 }
 
-func targetName(target *build.Target) string {
+func labelOf(target *build.Target) (label.Label, error) {
 	switch target.GetType() {
 	case build.Target_RULE:
-		return target.GetRule().GetName()
+		return label.Parse(target.GetRule().GetName())
 	case build.Target_SOURCE_FILE:
-		return target.GetSourceFile().GetName()
+		return label.Parse(target.GetSourceFile().GetName())
 	case build.Target_GENERATED_FILE:
-		return target.GetGeneratedFile().GetName()
+		return label.Parse(target.GetGeneratedFile().GetName())
 	case build.Target_PACKAGE_GROUP:
-		return target.GetPackageGroup().GetName()
+		return label.Parse(target.GetPackageGroup().GetName())
 	case build.Target_ENVIRONMENT_GROUP:
-		return target.GetEnvironmentGroup().GetName()
+		return label.Parse(target.GetEnvironmentGroup().GetName())
 	default:
-		return ""
+		return label.NoLabel, fmt.Errorf("labelOf called on unknown target type: %v", target.GetType().String())
 	}
-}
-
-func targetLabel(target *build.Target) (label.Label, error) {
-	return label.Parse(targetName(target))
 }
 
 func equivalentAttributes(left, right *build.Attribute) bool {
