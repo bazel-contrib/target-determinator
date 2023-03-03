@@ -6,6 +6,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.not;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
@@ -482,6 +483,11 @@ public abstract class Tests {
     doTest(Commits.ONE_SH_TEST, Commits.SH_TEST_NOT_EXECUTABLE, Set.of("//sh:sh_test"));
   }
 
+  @Test
+  public void incompatibleTargetsAreFiltered() throws TargetComputationErrorException {
+    doTest(Commits.NO_TARGETS, Commits.INCOMPATIBLE_TARGET, Set.of("//java/example:CompatibleTest"));
+  }
+
   public void doTest(String commitBefore, String commitAfter, Set<String> expectedTargets) throws TargetComputationErrorException {
     doTest(commitBefore, commitAfter, expectedTargets, Set.of());
   }
@@ -606,4 +612,6 @@ class Commits {
       "ff7e60d535564a0695a5bf9ed1774bacc480bf50"; // (v1/sh-test) add an executable shell file and BUILD.bazel file
   public static final String SH_TEST_NOT_EXECUTABLE =
       "6452291f3dcea1a5cdb332463308b70325a833e0"; // (v1/sh-test-non-executable) make shell file non-executable
+  public static final String INCOMPATIBLE_TARGET =
+      "69b4567d904cad46a584901c82c2959be89ae458";
 }
