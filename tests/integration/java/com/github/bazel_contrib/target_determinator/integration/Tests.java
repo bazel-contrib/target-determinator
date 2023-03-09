@@ -484,8 +484,10 @@ public abstract class Tests {
   }
 
   @Test
-  public void incompatibleTargetsAreFiltered() throws TargetComputationErrorException {
-    doTest(Commits.NO_TARGETS, Commits.INCOMPATIBLE_TARGET, Set.of("//java/example:CompatibleTest"));
+  public void incompatibleTargetsAreFiltered() throws Exception {
+    doTest(Commits.ONE_TEST, Commits.INCOMPATIBLE_TARGET,
+        Set.of("//java/example:CompatibleTest"),
+        Set.of("//java/example:IncompatibleTest"));
   }
 
   public void doTest(String commitBefore, String commitAfter, Set<String> expectedTargets) throws TargetComputationErrorException {
