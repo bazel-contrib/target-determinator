@@ -675,7 +675,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
 
-	var compatibleTargets map[string]bool
+	var compatibleTargets map[label.Label]bool
 	if context.FilterIncompatibleTargets {
 		if compatibleTargets, err = findCompatibleTargets(context, targets.String()); err != nil {
 			return nil, fmt.Errorf("failed to find compatible targets: %w", err)
@@ -690,7 +690,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
 		}
-		if context.FilterIncompatibleTargets && !compatibleTargets[l.String()] {
+		if context.FilterIncompatibleTargets && !compatibleTargets[l] {
 			continue // Ignore incompatible targets
 		}
 		labels = append(labels, l)
@@ -747,7 +747,7 @@ func runToCqueryResult(context *Context, pattern string) (*analysis.CqueryResult
 	return &result, nil
 }
 
-func findCompatibleTargets(context *Context, pattern string) (map[string]bool, error) {
+func findCompatibleTargets(context *Context, pattern string) (map[label.Label]bool, error) {
 	log.Printf("Finding compatible targets under %s", pattern)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -761,10 +761,15 @@ func findCompatibleTargets(context *Context, pattern string) (map[string]bool, e
 		return nil, fmt.Errorf("failed to run compatibility-filtering cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
 	}
 
-	compatibleTargets := make(map[string]bool)
+	compatibleTargets := make(map[label.Label]bool)
 	scanner := bufio.NewScanner(&stdout)
 	for scanner.Scan() {
-		compatibleTargets[scanner.Text()] = true
+		labelStr := scanner.Text()
+		label, err := label.Parse(labelStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse label from compatibility-filtering: %q: %w", labelStr, err)
+		}
+		compatibleTargets[label] = true
 	}
 	return compatibleTargets, nil
 }
