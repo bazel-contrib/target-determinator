@@ -72,3 +72,9 @@ When adding new dependencies to the Go code, please run `scripts/update-dependen
 In general, BUILD files in this repo are maintained by `gazelle`; to regenerate tem, please run `bazel run //:gazelle`.
 
 Alongside each `go_proto_library`, there is a runnable `copy_proto_output` rule which can be used to generate the Go source for a protobuf, in case it's useful to inspect.
+
+## Supported Bazel versions
+
+Target Determinator currently supports Bazel 4.0.0 up to and including the latest LTS release.
+
+We are happy to support newer Bazel versions (as long as this doesn't break support for the current LTS), but don't actively test against them.

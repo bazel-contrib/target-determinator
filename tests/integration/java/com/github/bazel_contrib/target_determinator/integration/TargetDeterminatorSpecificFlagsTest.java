@@ -78,7 +78,7 @@ public class TargetDeterminatorSpecificFlagsTest {
     TestdataRepo.gitCheckout(testDir, Commits.TWO_TESTS);
     Set<Label> targets =
         getTargets(
-            Commits.TWO_NATIVE_TESTS_BAZEL3, "//java/example:ExampleTest");
+            Commits.TWO_NATIVE_TESTS_BAZEL5_4_0, "//java/example:ExampleTest");
     Util.assertTargetsMatch(targets, Set.of("//java/example:ExampleTest"), Set.of(), false);
   }
 
