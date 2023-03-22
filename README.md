@@ -77,4 +77,6 @@ Alongside each `go_proto_library`, there is a runnable `copy_proto_output` rule 
 
 Target Determinator currently supports Bazel 4.0.0 up to and including the latest LTS release.
 
-We are happy to support newer Bazel versions (as long as this doesn't break support for the current LTS), but don't actively test against them.
+We are happy to support newer Bazel versions (as long as this doesn't break support for the current LTS), but only exhaustively test against the latest LTS release.
+
+We have a small number of smoke tests which verify basic functionality on the oldest supported release, but do not regularly test against it.
