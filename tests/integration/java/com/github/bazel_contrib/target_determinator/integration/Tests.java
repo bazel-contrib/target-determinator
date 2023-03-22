@@ -473,7 +473,7 @@ public abstract class Tests {
   public void testMinimumSupportedBazelVersion() throws Exception {
     doTest(
         Commits.SIMPLE_JAVA_LIBRARY_TARGETS,
-        Commits.SIMPLE_TARGETS_BAZEL4_0_0,
+        Commits.CHANGE_TRANSITIVE_FILE_BAZEL4_0_0,
         Set.of("//java/example/simple:simple", "//java/example/simple:simple_dep"));
   }
 
@@ -547,6 +547,7 @@ class Commits {
   public static final String SIMPLE_JAVA_LIBRARY_AND_JAVA_TESTS =
       "a82f3ba70787617a78c60c2c460bf954c30be4a0";
   public static final String CHANGE_TRANSITIVE_FILE = "e93ab7f1081c2d25b54e325f402875230cb37bd7";
+  public static final String CHANGE_TRANSITIVE_FILE_BAZEL4_0_0 = "c90dce5b2b6c888ba08b8cdac5eb60b031ff447f";
   public static final String TWO_LANGUAGES_OPTIONAL_MISSING_TRY_IMPORT =
       "69ed4974b6cccb990415537ffe19cc59c9b22306";
   public static final String TWO_LANGUAGES_OPTIONAL_PRESENT_BAZELRC_AFFECTING_JAVA =
