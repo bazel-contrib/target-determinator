@@ -373,15 +373,10 @@ public abstract class Tests {
 
   @Test
   public void reducingVisibilityOnDependencyAffectsTarget() throws Exception {
-    try {
-      doTest(
-          Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
-          Commits.REDUCE_DEPENDENCY_VISIBILITY,
-          Set.of("//NotApplicable"));
-      fail("Expected target-determinator command to fail but it succeeded");
-    } catch (TargetComputationErrorException e) {
-      // Invocation failed as expected.
-    }
+    doTest(
+        Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
+        Commits.REDUCE_DEPENDENCY_VISIBILITY,
+        Set.of("//java/example:ExampleTest", "//java/example/simple"));
   }
 
   @Test

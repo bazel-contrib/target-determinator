@@ -92,16 +92,17 @@ public class TargetDeterminatorIntegrationTest extends Tests {
 
   @Override
   public void reducingVisibilityOnDependencyAffectsTarget() throws Exception {
-    // Specifically check that the output is as expected.
+    // Target-determinator runs cquery, not query, which eagerly errors on invalid visibility.
+    // Failing with a good error message is a reasonable alternative to passing but returning targets which are known not to be buildable.
     try {
       doTest(
           Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
           Commits.REDUCE_DEPENDENCY_VISIBILITY,
-          Set.of("//NotApplicable"));
+          Set.of("//java/example:ExampleTest", "//java/example/simple"));
+      fail("Expected target-determinator command to fail but it succeeded");
     } catch (TargetComputationErrorException e) {
       assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
-      return;
+      assertThat(e.getStderr(), CoreMatchers.containsString("target '//java/example/simple:simple' is not visible from target '//java/example:ExampleTest'"));
     }
-    fail("Expected target-determinator command to fail but it succeeded");
   }
 }
