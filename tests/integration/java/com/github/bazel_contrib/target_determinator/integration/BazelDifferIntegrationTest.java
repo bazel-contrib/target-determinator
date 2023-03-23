@@ -180,4 +180,8 @@ public class BazelDifferIntegrationTest extends Tests {
   @Override
   @Ignore("bazel-differ doesn't handle no targets being returned from a query")
   public void zeroToOneTarget_native() {}
+
+  @Override
+  @Ignore("bazel-differ does not filter incompatible targets")
+  public void incompatibleTargetsAreFiltered() throws Exception {}
 }

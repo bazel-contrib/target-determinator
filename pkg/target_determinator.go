@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
@@ -130,6 +131,8 @@ type Context struct {
 	// We suspect that clearing the analysis cache is now unnecessary, as cquery behaves more reasonably around not returning stale results.
 	// This flag allows validating whether that is the case.
 	CompareQueriesAroundAnalysisCacheClear bool
+	// FilterIncompatibleTargets controls whether we filter out incompatible targets from the candidate set of affected targets.
+	FilterIncompatibleTargets bool
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
@@ -206,6 +209,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 		BeforeQueryErrorBehavior:               context.BeforeQueryErrorBehavior,
 		AnalysisCacheClearStrategy:             context.AnalysisCacheClearStrategy,
 		CompareQueriesAroundAnalysisCacheClear: context.CompareQueriesAroundAnalysisCacheClear,
+		FilterIncompatibleTargets:              context.FilterIncompatibleTargets,
 	}
 	cleanupFunc := func() {}
 
@@ -352,10 +356,10 @@ func gitStatus(workingDirectory string) ([]GitFileStatus, error) {
 // function returns the path to the new worktree, otherwise an empty string is returned.
 //
 // A new worktree is created in the following cases:
-// - the original worktree is unclean (non-ignored untracked files or tracked local changes).
-// - upon checking out the new revision, the worktree is unclean. This can happen when a submodule
-//   was moved or removed between the current and target commit, or when the contents of the
-//  .gitignore file changes.
+//   - the original worktree is unclean (non-ignored untracked files or tracked local changes).
+//   - upon checking out the new revision, the worktree is unclean. This can happen when a submodule
+//     was moved or removed between the current and target commit, or when the contents of the
+//     .gitignore file changes.
 //
 // When a worktree is created, the repository present in workingDirectory may or may not have
 // the rev revision checked out.
@@ -671,6 +675,13 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
 
+	var compatibleTargets map[label.Label]bool
+	if context.FilterIncompatibleTargets {
+		if compatibleTargets, err = findCompatibleTargets(context, targets.String()); err != nil {
+			return nil, fmt.Errorf("failed to find compatible targets: %w", err)
+		}
+	}
+
 	log.Println("Matching labels to configurations")
 	labels := make([]label.Label, 0)
 	labelsToConfigurations := make(map[label.Label][]Configuration)
@@ -678,6 +689,9 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		l, err := labelOf(mt.Target)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
+		}
+		if context.FilterIncompatibleTargets && !compatibleTargets[l] {
+			continue // Ignore incompatible targets
 		}
 		labels = append(labels, l)
 
@@ -731,6 +745,36 @@ func runToCqueryResult(context *Context, pattern string) (*analysis.CqueryResult
 		return nil, fmt.Errorf("failed to unmarshal cquery stdout: %w", err)
 	}
 	return &result, nil
+}
+
+func findCompatibleTargets(context *Context, pattern string) (map[label.Label]bool, error) {
+	log.Printf("Finding compatible targets under %s", pattern)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	returnVal, err := context.BazelCmd.Execute(
+		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
+		[]string{"--output_base", context.BazelOutputBase}, "cquery", pattern,
+		"--output=starlark",
+		"--starlark:expr=target.label if \"IncompatiblePlatformProvider\" not in providers(target) else \"\"",
+	)
+	if returnVal != 0 || err != nil {
+		return nil, fmt.Errorf("failed to run compatibility-filtering cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+	}
+
+	compatibleTargets := make(map[label.Label]bool)
+	scanner := bufio.NewScanner(&stdout)
+	for scanner.Scan() {
+		labelStr := scanner.Text()
+		if labelStr == "" {
+			continue
+		}
+		label, err := ParseCanonicalLabel(labelStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse label from compatibility-filtering: %q: %w", labelStr, err)
+		}
+		compatibleTargets[label] = true
+	}
+	return compatibleTargets, nil
 }
 
 // MatchingTargets stores the top-level targets within a repository,
@@ -812,10 +856,10 @@ func equivalentAttributes(left, right *build.Attribute) bool {
 // AttributeForSerialization redacts details about an attribute which don't affect the output of
 // building them, and returns equivalent canonical attribute metadata.
 // In particular it redacts:
-//  * Whether an attribute was explicitly specified (because the effective value is all that
-//    matters).
-//  * Any attribute named `generator_location`, because these point to absolute paths for
-//    built-in `cc_toolchain_suite` targets such as `@local_config_cc//:toolchain`.
+//   - Whether an attribute was explicitly specified (because the effective value is all that
+//     matters).
+//   - Any attribute named `generator_location`, because these point to absolute paths for
+//     built-in `cc_toolchain_suite` targets such as `@local_config_cc//:toolchain`.
 func AttributeForSerialization(rawAttr *build.Attribute) *build.Attribute {
 	normalized := *rawAttr
 	normalized.ExplicitlySpecified = nil
