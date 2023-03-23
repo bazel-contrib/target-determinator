@@ -25,4 +25,9 @@ class TargetComputationErrorException extends Exception {
     this.stdout = stdout;
     this.stderr = stderr;
   }
+
+  @Override
+  public String getMessage() {
+    return String.format("%s, stderr: %s", super.getMessage(), stderr);
+  }
 }

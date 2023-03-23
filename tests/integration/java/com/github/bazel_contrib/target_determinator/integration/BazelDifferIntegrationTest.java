@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 import org.junit.Ignore;
+import org.junit.Test;
 
 public class BazelDifferIntegrationTest extends Tests {
   private static final String BAZEL_DIFFER =
@@ -90,6 +91,20 @@ public class BazelDifferIntegrationTest extends Tests {
   @Override
   @Ignore("bazel-differ doesn't inspect configurations.")
   public void changingHostConfigurationDoesNotAffectTargetConfiguration() {}
+
+  @Override
+  @Test
+  public void ignoredPlatformSpecificSrcChanged() throws Exception {
+    allowOverBuilds("bazel-differ doesn't filter platform-specific changes");
+    super.ignoredPlatformSpecificSrcChanged();
+  }
+
+  @Override
+  @Test
+  public void ignoredPlatformSpecificDepChanged() throws Exception {
+    allowOverBuilds("bazel-differ doesn't filter platform-specific changes");
+    super.ignoredPlatformSpecificDepChanged();
+  }
 
   // Returning things in //external
 

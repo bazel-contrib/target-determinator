@@ -19,6 +19,7 @@ go_library(
         "//third_party/protobuf/bazel/build",
         "@bazel_gazelle//label:go_default_library",
         "@com_github_aristanetworks_goarista//path",
+        "@com_github_hashicorp_go_version//:go-version",
         "@com_github_wi2l_jsondiff//:jsondiff",
         "@org_golang_google_protobuf//encoding/protojson",
         "@org_golang_google_protobuf//proto",
