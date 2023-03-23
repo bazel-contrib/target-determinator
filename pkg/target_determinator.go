@@ -791,15 +791,15 @@ func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Confi
 func labelOf(target *build.Target) (label.Label, error) {
 	switch target.GetType() {
 	case build.Target_RULE:
-		return label.Parse(target.GetRule().GetName())
+		return ParseCanonicalLabel(target.GetRule().GetName())
 	case build.Target_SOURCE_FILE:
-		return label.Parse(target.GetSourceFile().GetName())
+		return ParseCanonicalLabel(target.GetSourceFile().GetName())
 	case build.Target_GENERATED_FILE:
-		return label.Parse(target.GetGeneratedFile().GetName())
+		return ParseCanonicalLabel(target.GetGeneratedFile().GetName())
 	case build.Target_PACKAGE_GROUP:
-		return label.Parse(target.GetPackageGroup().GetName())
+		return ParseCanonicalLabel(target.GetPackageGroup().GetName())
 	case build.Target_ENVIRONMENT_GROUP:
-		return label.Parse(target.GetEnvironmentGroup().GetName())
+		return ParseCanonicalLabel(target.GetEnvironmentGroup().GetName())
 	default:
 		return label.NoLabel, fmt.Errorf("labelOf called on unknown target type: %v", target.GetType().String())
 	}
@@ -835,4 +835,17 @@ func AttributeForSerialization(rawAttr *build.Attribute) *build.Attribute {
 
 func CompareLabels(a, b label.Label) bool {
 	return a.String() < b.String()
+}
+
+// ParseCanonicalLabel parses a label from a string, and removes sources of inconsequential difference which would make comparing two labels fail.
+// In particular, it treats @// the same as //
+func ParseCanonicalLabel(s string) (label.Label, error) {
+	l, err := label.Parse(s)
+	if err != nil {
+		return l, err
+	}
+	if l.Repo == "@" {
+		l.Repo = ""
+	}
+	return l, nil
 }
