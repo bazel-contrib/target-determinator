@@ -765,7 +765,7 @@ func findCompatibleTargets(context *Context, pattern string) (map[label.Label]bo
 	scanner := bufio.NewScanner(&stdout)
 	for scanner.Scan() {
 		labelStr := scanner.Text()
-		label, err := label.Parse(labelStr)
+		label, err := ParseCanonicalLabel(labelStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label from compatibility-filtering: %q: %w", labelStr, err)
 		}
@@ -832,15 +832,15 @@ func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Confi
 func labelOf(target *build.Target) (label.Label, error) {
 	switch target.GetType() {
 	case build.Target_RULE:
-		return label.Parse(target.GetRule().GetName())
+		return ParseCanonicalLabel(target.GetRule().GetName())
 	case build.Target_SOURCE_FILE:
-		return label.Parse(target.GetSourceFile().GetName())
+		return ParseCanonicalLabel(target.GetSourceFile().GetName())
 	case build.Target_GENERATED_FILE:
-		return label.Parse(target.GetGeneratedFile().GetName())
+		return ParseCanonicalLabel(target.GetGeneratedFile().GetName())
 	case build.Target_PACKAGE_GROUP:
-		return label.Parse(target.GetPackageGroup().GetName())
+		return ParseCanonicalLabel(target.GetPackageGroup().GetName())
 	case build.Target_ENVIRONMENT_GROUP:
-		return label.Parse(target.GetEnvironmentGroup().GetName())
+		return ParseCanonicalLabel(target.GetEnvironmentGroup().GetName())
 	default:
 		return label.NoLabel, fmt.Errorf("labelOf called on unknown target type: %v", target.GetType().String())
 	}
