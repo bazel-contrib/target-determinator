@@ -765,6 +765,9 @@ func findCompatibleTargets(context *Context, pattern string) (map[label.Label]bo
 	scanner := bufio.NewScanner(&stdout)
 	for scanner.Scan() {
 		labelStr := scanner.Text()
+		if labelStr == "" {
+			continue
+		}
 		label, err := ParseCanonicalLabel(labelStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label from compatibility-filtering: %q: %w", labelStr, err)
