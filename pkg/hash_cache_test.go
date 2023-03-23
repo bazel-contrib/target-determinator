@@ -393,7 +393,7 @@ func areHashesEqual(left, right []byte) bool {
 }
 
 func mustParseLabel(s string) label.Label {
-	l, err := label.Parse(s)
+	l, err := pkg.ParseCanonicalLabel(s)
 	if err != nil {
 		panic(err)
 	}
