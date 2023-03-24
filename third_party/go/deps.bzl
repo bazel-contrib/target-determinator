@@ -104,6 +104,18 @@ def go_dependencies():
         version = "v0.0.4",
     )
     go_repository(
+        name = "com_github_google_btree",
+        importpath = "github.com/google/btree",
+        sum = "h1:xf4v41cLI2Z6FxbKm+8Bu+m8ifhj15JuZ9sa0jZCMUU=",
+        version = "v1.1.2",
+    )
+    go_repository(
+        name = "com_github_google_uuid",
+        importpath = "github.com/google/uuid",
+        sum = "h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=",
+        version = "v1.3.0",
+    )
+    go_repository(
         name = "com_github_hashicorp_go_uuid",
         importpath = "github.com/hashicorp/go-uuid",
         sum = "h1:cfejS+Tpcp13yd5nYHWDI6qVCny6wyX2Mt5SGur2IGE=",
@@ -354,12 +366,6 @@ def go_dependencies():
         importpath = "google.golang.org/grpc",
         sum = "h1:AGJ0Ih4mHjSeibYkFGh1dD9KJ/eOtZ93I6hoHhukQ5Q=",
         version = "v1.40.0",
-    )
-    go_repository(
-        name = "org_golang_x_exp",
-        importpath = "golang.org/x/exp",
-        sum = "h1:pC9Okm6BVmxEw76PUu0XUbOTQ92JX11hfvqTjAV3qxM=",
-        version = "v0.0.0-20220328175248-053ad81199eb",
     )
     go_repository(
         name = "org_golang_x_time",

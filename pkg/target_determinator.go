@@ -705,7 +705,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	}
 
 	matchingTargets := &MatchingTargets{
-		labels:                 ss.NewSortedSetFunc(labels, CompareLabels),
+		labels:                 ss.NewSortedSetFn(labels, CompareLabels),
 		labelsToConfigurations: processedLabelsToConfigurations,
 	}
 
