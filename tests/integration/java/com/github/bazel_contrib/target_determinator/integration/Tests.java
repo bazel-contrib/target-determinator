@@ -6,6 +6,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.not;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
@@ -116,7 +117,7 @@ public abstract class Tests {
 
   @Test
   public void changedBazelMajorVersion_native() throws Exception {
-    // Between Bazel 3 and 5, the attributes available on java_test changed, which means
+    // Between Bazel 5 and 6, the attributes available on java_test changed, which means
     // these targets may be picked up as changed if a target determinator is just doing
     // hashing of target-local data.
     // However, the PatchVersion tests are also significant - changing Bazel versions may change
@@ -124,7 +125,7 @@ public abstract class Tests {
     // by their query-observable interface.
     doTest(
         Commits.TWO_TESTS,
-        Commits.TWO_NATIVE_TESTS_BAZEL3,
+        Commits.TWO_NATIVE_TESTS_BAZEL5_4_0,
         Set.of("//java/example:ExampleTest", "//java/example:OtherExampleTest"));
   }
 
@@ -132,7 +133,7 @@ public abstract class Tests {
   public void changedBazelPatchVersion_native() throws Exception {
     doTest(
         Commits.TWO_TESTS,
-        Commits.TWO_NATIVE_TESTS_BAZEL5_1_0,
+        Commits.TWO_NATIVE_TESTS_BAZEL6_0_0,
         Set.of("//java/example:ExampleTest", "//java/example:OtherExampleTest"));
   }
 
@@ -140,7 +141,7 @@ public abstract class Tests {
   public void changedBazelMajorVersion_starlark() throws Exception {
     doTest(
         Commits.SIMPLE_JAVA_LIBRARY_TARGETS,
-        Commits.SIMPLE_TARGETS_BAZEL3,
+        Commits.SIMPLE_TARGETS_BAZEL5_4_0,
         Set.of("//java/example/simple:simple", "//java/example/simple:simple_dep"));
   }
 
@@ -148,7 +149,7 @@ public abstract class Tests {
   public void changedBazelPatchVersion_starlark() throws Exception {
     doTest(
         Commits.SIMPLE_JAVA_LIBRARY_TARGETS,
-        Commits.SIMPLE_TARGETS_BAZEL5_1_0,
+        Commits.SIMPLE_TARGETS_BAZEL6_0_0,
         Set.of("//java/example/simple:simple", "//java/example/simple:simple_dep"));
   }
 
@@ -373,15 +374,10 @@ public abstract class Tests {
 
   @Test
   public void reducingVisibilityOnDependencyAffectsTarget() throws Exception {
-    try {
-      doTest(
-          Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
-          Commits.REDUCE_DEPENDENCY_VISIBILITY,
-          Set.of("//NotApplicable"));
-      fail("Expected target-determinator command to fail but it succeeded");
-    } catch (TargetComputationErrorException e) {
-      // Invocation failed as expected.
-    }
+    doTest(
+        Commits.ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY,
+        Commits.REDUCE_DEPENDENCY_VISIBILITY,
+        Set.of("//java/example:ExampleTest", "//java/example/simple"));
   }
 
   @Test
@@ -475,8 +471,23 @@ public abstract class Tests {
   }
 
   @Test
+  public void testMinimumSupportedBazelVersion() throws Exception {
+    doTest(
+        Commits.SIMPLE_JAVA_LIBRARY_TARGETS,
+        Commits.CHANGE_TRANSITIVE_FILE_BAZEL4_0_0,
+        Set.of("//java/example/simple:simple", "//java/example/simple:simple_dep"));
+  }
+
+  @Test
   public void testChmodFile() throws TargetComputationErrorException {
     doTest(Commits.ONE_SH_TEST, Commits.SH_TEST_NOT_EXECUTABLE, Set.of("//sh:sh_test"));
+  }
+
+  @Test
+  public void incompatibleTargetsAreFiltered() throws Exception {
+    doTest(Commits.ONE_TEST, Commits.INCOMPATIBLE_TARGET,
+        Set.of("//java/example:CompatibleTest"),
+        Set.of("//java/example:IncompatibleTest"));
   }
 
   public void doTest(String commitBefore, String commitAfter, Set<String> expectedTargets) throws TargetComputationErrorException {
@@ -522,83 +533,87 @@ public abstract class Tests {
 
 class Commits {
 
-  public static final String NO_TARGETS = "6682820b4acb455f13bc3cf8f7d254056092e306";
-  public static final String ONE_TEST = "21024914188b0a8aaf88f81a5b9dfbdf3b24dca5";
-  public static final String TWO_TESTS = "d00fdc57fad09fbdc1a9b9e53ce0a102e813fd1a";
-  public static final String HAS_JVM_FLAGS = "3d22ee76c892762fc979eaf0be10019f56c82995";
-  public static final String EXPLICIT_DEFAULT_VALUE = "825ec627626fc910ed21bf62241fa96e9aa0c54c";
-  public static final String TWO_NATIVE_TESTS_BAZEL3 = "9bb3a36e3e139b9f125d64d35e6da7e712e5f606";
-  public static final String TWO_NATIVE_TESTS_BAZEL5_1_0 = "a9d746c5ff071658a461005577dfd3052d2b212d";
-  public static final String MODIFIED_TEST_SRC = "36b10bfc8e4cac62e3471115ab49d0a981b736f6";
-  public static final String TWO_LANGUAGES_OF_TESTS = "b93e37329f1e2fc01b99bfcadc5816be8db25b44";
-  public static final String BAZELRC_TEST_ENV = "a3d71cfcf64ae1eb6b6ef55268b47fa5cf41b6ff";
-  public static final String BAZELRC_AFFECTING_JAVA = "e84173a8937f141c174bc195d77ac5cf845035f1";
-  public static final String SIMPLE_TARGETS_BAZEL3 = "69276dbac636812501212237871a3f8fdbd71519";
-  public static final String SIMPLE_TARGETS_BAZEL5_1_0 = "d7dd0a66dbfa9857b2bb642a9cc1ae8103ce50b0";
+  public static final String NO_TARGETS = "d2862de5e63c8be0866056e6307049c159fb9e47";
+  public static final String ONE_TEST = "65dfed228e75a7f4ad361fe65512a1e58ef83b1c";
+  public static final String TWO_TESTS = "bd1f7781e0d5ee66f3235a1adb8f656d5ea35c2d";
+  public static final String HAS_JVM_FLAGS = "50609b7d1260b449ceed57718165981986880d97";
+  public static final String EXPLICIT_DEFAULT_VALUE = "34213eb339cbb5d1544c83c1aa8c19528c147e0d";
+  public static final String TWO_NATIVE_TESTS_BAZEL5_4_0 = "97637aedbfdf0be9c9d440c56ddc10c842fd9e4a";
+  public static final String TWO_NATIVE_TESTS_BAZEL6_0_0 = "e82404bbedebb800fed8053dfc4f2ebdbcdebcd6";
+  public static final String MODIFIED_TEST_SRC = "4a0e589ac8d0d33e8e6109b07d0d60a833261eb3";
+  public static final String TWO_LANGUAGES_OF_TESTS = "805a14f65edd9e3d42b6ec8524397a269065df49";
+  public static final String BAZELRC_TEST_ENV = "9afe362266b9a7cd0d9dd63d16bdf9849db71199";
+  public static final String BAZELRC_AFFECTING_JAVA = "b1f9504dcba4e0fdc2cf344048307fdd7ac9baec";
+  public static final String SIMPLE_TARGETS_BAZEL4_0_0 = "877b2f679e65595e895a1356994344bf4b4ce45f";
+  public static final String SIMPLE_TARGETS_BAZEL5_4_0 = "7cc16e4080aa7b20fa80c2e4e1dacb353ef09275";
+  public static final String SIMPLE_TARGETS_BAZEL6_0_0 = "7efcdd39046bd3d0fdd9c9ab34259ce8894c5cfb";
   public static final String ADD_OPTIONAL_PRESENT_EMPTY_BAZELRC =
-      "32e4a4533d752781d76d36d0ec65d74558aa5574";
-  public static final String SIMPLE_JAVA_LIBRARY_RULE = "87236b8d878ef596bcb3938c85a850d031ac7fec";
+      "50f6d42a9fa62760ec0e2bb22a51a5e68ed87813";
+  public static final String SIMPLE_JAVA_LIBRARY_RULE = "3ced8e757bbdb853553c62754ad68bce3be9033f";
   public static final String SIMPLE_JAVA_LIBRARY_TARGETS =
-      "053b1302b554df6fafe5c5fa3c812b625a58c08f";
+      "a96d8a14615e972f6a833ba70bb0a9a806e781e0";
   public static final String SIMPLE_JAVA_LIBRARY_AND_JAVA_TESTS =
-      "991771fd338e57796065445a89782aaaee79c811";
-  public static final String CHANGE_TRANSITIVE_FILE = "3e9977e9d3b9c6e181053b35c332b77d54172e39";
+      "a82f3ba70787617a78c60c2c460bf954c30be4a0";
+  public static final String CHANGE_TRANSITIVE_FILE = "e93ab7f1081c2d25b54e325f402875230cb37bd7";
+  public static final String CHANGE_TRANSITIVE_FILE_BAZEL4_0_0 = "c90dce5b2b6c888ba08b8cdac5eb60b031ff447f";
   public static final String TWO_LANGUAGES_OPTIONAL_MISSING_TRY_IMPORT =
-      "6d1773a0bb6cdbaa0c13273d76b3e3a474198e19";
+      "69ed4974b6cccb990415537ffe19cc59c9b22306";
   public static final String TWO_LANGUAGES_OPTIONAL_PRESENT_BAZELRC_AFFECTING_JAVA =
-      "4e132ae57ab18aaa7df56e15a574248caa2d9419";
+      "b92b6f07812f6d440c515280d344b491614f3c6b";
   public static final String TWO_LANGUAGES_NOOP_IMPORTED_BAZELRC =
-      "7f5cbe1855d785ff08006f1800e534aa4543130e";
+      "ebecc480402cf271f258afaa533cf36a305145b8";
   public static final String TWO_LANGUAGES_IMPORTED_BAZELRC_AFFECTING_JAVA =
-      "16e1936b701180aa5f55caaa1afef42a9d3332db";
+      "5f8a5eafa64838d18e66c3a2977fd72c9a81f7f5";
   public static final String JAVA_TESTS_AND_SIMPLE_JAVA_RULES =
-      "319e09542480559f3a7fbdba0abdc5399e4d5d2f";
-  public static final String DEP_ON_STARLARK_TARGET = "427cf9f5ece1ac7c358d8dfaeb920e94070bfd71";
+      "92d3c3c260a7c856b59e33df40f55dcfa40f04f6";
+  public static final String DEP_ON_STARLARK_TARGET = "af5c807d6254150c82a33f36fce21c5ced4f50ff";
   public static final String CHANGE_STARLARK_RULE_IMPLEMENTATION =
-      "cc7d8a8842712334fbac1e57b9f6639d84182e3f";
+      "f9ef8e3ad134d42b4d7391e8f02179176971a47d";
   public static final String NOOP_REFACTOR_STARLARK_RULE_IMPLEMENTATION =
-      "edaa8a768f69f2fea89affc65564a6ff486b0700";
-  public static final String RULES_IN_EXTERNAL_REPO = "1054f4bc492268addbcf4043ea32965eae76304e";
+      "8aa249993b0263ea4adf83d6b0cd851b711baf56";
+  public static final String RULES_IN_EXTERNAL_REPO = "41a8a5272e98f8feb26f73327a87f06ca19404a1";
   public static final String NOOP_REFACTOR_IN_WORKSPACE_FILE =
-      "e9d79d954586316f240e0f21d4b364d03ac53ec6";
-  public static final String ADD_SIMPLE_PACKAGE_RULE = "1e6f63045322ec64785d1044c77a21d7297ec90c";
+      "f4325420d0b011a841a60a2c612ef4997aa5359b";
+  public static final String ADD_SIMPLE_PACKAGE_RULE = "52609340c87c6cee9d6e3ac26564a46ff9a6c17a";
   public static final String REFACTORED_WORKSPACE_INDIRECTLY =
-      "e7d1ecdf82b1ef248201906cece48ccd81870dd2";
+      "b3d8d9c109f1fc003ce5744961dac58773c2c71b";
   public static final String PATHOLOGICAL_RULES_SINGLE_TARGET =
-      "47664af1266b0f4c95b97ae5e6c7d0215d27abd6";
+      "d3fa4261ba55826781c33a1e6814de7effa8f48f";
   public static final String PATHOLOGICAL_RULES_TWO_TARGETS =
-      "4a51052d5e37953441216f253de3c7e45b814b35";
+      "436d3472cd7f3c8a73cb23e0d85e86aa2eac0e0d";
   public static final String PATHOLOGICAL_RULES_THREE_TARGETS =
-      "d054b4b5461ae79864a5767db582049de261f45c";
+      "5987e2a10abef4087ae472e6171cda506190ca95";
   public static final String PATHOLOGICAL_RULES_FIVE_TARGETS =
-      "e22ac7985b3651203653dcfb3123d7e90276a7ad";
+      "8e5e5b4b1ac7eaf02ddafe9f551a1f6eda5b2191";
   public static final String CHANGE_ATTRIBUTES_VIA_INDIRECTION =
-      "89f8ba981fc6bdd98f3a283686f4f0907e9e0ab8";
-  public static final String HAS_GLOBS = "6d7345ee77529ec50832a268b1e1382d6dac2846";
-  public static final String CHANGE_GLOBS = "84a87db76ce4e082ad5095881d9bf7230d43e193";
+      "f4dfccca871e962bd4fa52f1d55e5169192b8343";
+  public static final String HAS_GLOBS = "018f7c0b96891ca644a05ae15d8d21be020b4355";
+  public static final String CHANGE_GLOBS = "307612ea08fc732e41815c4b24dfbdb47d741955";
   public static final String ADD_BUILD_FILE_INTERFERING_WTH_GLOBS =
-      "2f68f0e761963b1eae163be3270b55e6aa3cac1b";
-  public static final String BAZELRC_INCLUDED_EMPTY = "288a6f76b28d4a37c598e74f5c29491d5da56f49";
-  public static final String JAVA_USED_IN_GENRULE = "e9a4432e49ba9d8ceac7a496aa70f2646d358ab2";
-  public static final String BAZELRC_INCLUDED_JAVACOPT = "a2f9cb9a7d20dd69585fe2a262c73f7fd6442ed8";
-  public static final String BAZELRC_HOST_JAVACOPT = "f6b6eacd29f04b06eabd189c312dcfcc227519b1";
+      "8fbfba87540b48bb5e4b91a62180d4d5c6d6678e";
+  public static final String BAZELRC_INCLUDED_EMPTY = "89f1396b3341c038536ab7c17942b0c5a35515bc";
+  public static final String JAVA_USED_IN_GENRULE = "b941205e5a12ff6c5ae6305404b7dfe0a2e407c9";
+  public static final String BAZELRC_INCLUDED_JAVACOPT = "20f1af740abde1eea14af3668d8ffb2102bfcf06";
+  public static final String BAZELRC_HOST_JAVACOPT = "23948e3f11a51d3e7dc45c46853ae0a15cac6abf";
   public static final String ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY =
-      "42e7ffb4d37ba3a80684115bffcb44e6d1639d64";
+      "c0ef0f9805e65817299eb7a794ed66655c0dd5aa";
   public static final String REDUCE_DEPENDENCY_VISIBILITY =
-      "72228ac1191dc4b3cbc357e3bf0abce8a55450ed";
-  public static final String TWO_TESTS_WITH_GITIGNORE = "698cfb887aa6318bf22d5d27914cb917ecda4499";
+      "396dae111684b893ec6e04b2f6e86ed603a01082";
+  public static final String TWO_TESTS_WITH_GITIGNORE = "55845a3a08525f2aa66c3d7a2115dad684c46995";
   public static final String SUBMODULE_ADD_TRIVIAL_SUBMODULE =
-      "44ea0dd38b06cbac069a5799f7b7d560b420b13f";
+      "b88ddcfe3da63c8308ce6d3274dd424d2c7b211a";
   public static final String SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY =
-      "7afffd90c703f6e0ac3cb6a853bdf94d5ba39f43";
+      "4e9b396b3a8030925d7b544cda3f1edbc199810f";
   public static final String SUBMODULE_CHANGE_DIRECTORY =
-      "c8b244641693ddd180ab12d183f5be21dfcfd8c6";
+      "1cef87480c2c1dac74cc9de7470504fbd2b80265";
   public static final String SUBMODULE_DELETE_SUBMODULE =
-      "dde94a13e0f6f9a970bcaf700c45fc4ecb4e7949";
+      "d1b1d8f07f2e99429bafda134282b97588c69b3d";
   public static final String TWO_TESTS_BRANCH =
       "two-tests-branch"; // Local only (created by the test case).
   public static final String ONE_SH_TEST = 
-      "106ac1dd1fd762c3786e1f01b2aa47fc1eccab99"; // (v0/sh-test) add an executable shell file and BUILD.bazel file
-  public static final String SH_TEST_NOT_EXECUTABLE = 
-      "845171a918115260b50fb487e93c82d49e62abf6"; // (v0/sh-test-non-executable) make shell file non-executable
+      "ff7e60d535564a0695a5bf9ed1774bacc480bf50"; // (v1/sh-test) add an executable shell file and BUILD.bazel file
+  public static final String SH_TEST_NOT_EXECUTABLE =
+      "6452291f3dcea1a5cdb332463308b70325a833e0"; // (v1/sh-test-non-executable) make shell file non-executable
+  public static final String INCOMPATIBLE_TARGET =
+      "69b4567d904cad46a584901c82c2959be89ae458";
 }

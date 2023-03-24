@@ -17,6 +17,15 @@ public class TestdataRepo {
     Git.cloneRepository()
         .setURI("https://github.com/bazel-contrib/target-determinator-testdata.git")
         .setDirectory(path.toFile())
+        // We want to ensure that when using the real testdata repo, any referenced commits have matching tags.
+        // We may occasionally rewrite branches' history (e.g. we did when we changed the bazel version being used by all tests), but tags are immutable.
+        // There should be a tag for any commit we care about, so that we don't accidentally break test runs at historical commits in this repo.
+        //
+        // If you're developing a new test, you may want to set this to true (and change the URI above to a file:// URI)
+        // so that the commits on the branch you're developing on get cloned into your test repo.
+        // When a test has been developed and is ready to be merged into main,
+        // we will push any relevant tags, and set this argument back to false.
+        .setCloneAllBranches(false)
         .call();
     return new TestdataRepo(path);
   }
@@ -36,6 +45,11 @@ public class TestdataRepo {
         .setURI(path.toString())
         .setDirectory(destination.toFile())
         .setNoCheckout(true)
+        // Because in TestdataRepo.create we control whether we clone branches from upstream,
+        // we set this to true here to follow whatever the create call decided.
+        // If create set this to false, we won't have any branches to clone anyway so this is a no-op.
+        // If create set this to true, we will clone all of the branches.
+        .setCloneAllBranches(true)
         .call();
   }
 

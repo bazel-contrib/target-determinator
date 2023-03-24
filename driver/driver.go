@@ -24,9 +24,10 @@ import (
 )
 
 type driverFlags struct {
-	commonFlags    *cli.CommonFlags
-	revisionBefore string
-	manualTestMode string
+	commonFlags       *cli.CommonFlags
+	targetPatternFile string
+	revisionBefore    string
+	manualTestMode    string
 }
 
 type config struct {
@@ -34,7 +35,8 @@ type config struct {
 	RevisionBefore pkg.LabelledGitRev
 	Targets        pkg.TargetsList
 	// One of "run" or "skip".
-	ManualTestMode string
+	ManualTestMode    string
+	TargetPatternFile string
 }
 
 func main() {
@@ -89,9 +91,17 @@ func main() {
 
 	log.Printf("Discovered %d affected targets", len(targets))
 
-	targetPatternFile, err := os.CreateTemp("", "")
-	if err != nil {
-		log.Fatalf("Failed to create temporary file for target patterns: %v", err)
+	var targetPatternFile *os.File
+	if config.TargetPatternFile != "" {
+		targetPatternFile, err = os.OpenFile(config.TargetPatternFile, os.O_RDWR|os.O_CREATE, 0755)
+		if err != nil {
+			log.Fatalf("Failed to open target pattern file: %v", err)
+		}
+	} else {
+		targetPatternFile, err = os.CreateTemp("", "")
+		if err != nil {
+			log.Fatalf("Failed to create temporary file for target patterns: %v", err)
+		}
 	}
 	for _, target := range targets {
 		if _, err := targetPatternFile.WriteString(target.String()); err != nil {
@@ -135,6 +145,7 @@ func parseFlags() (*driverFlags, error) {
 	var flags driverFlags
 	flags.commonFlags = cli.RegisterCommonFlags()
 	flag.StringVar(&flags.manualTestMode, "manual-test-mode", "skip", "How to handle affected tests tagged manual. Possible values: run|skip")
+	flag.StringVar(&flags.targetPatternFile, "target-pattern-file", "", "If defined, stores the list of affected targets in the given file.")
 
 	flag.Parse()
 
@@ -158,9 +169,10 @@ func resolveConfig(flags driverFlags) (*config, error) {
 	}
 
 	return &config{
-		Context:        commonArgs.Context,
-		RevisionBefore: commonArgs.RevisionBefore,
-		Targets:        commonArgs.Targets,
-		ManualTestMode: flags.manualTestMode,
+		Context:           commonArgs.Context,
+		RevisionBefore:    commonArgs.RevisionBefore,
+		Targets:           commonArgs.Targets,
+		ManualTestMode:    flags.manualTestMode,
+		TargetPatternFile: flags.targetPatternFile,
 	}, nil
 }

@@ -76,6 +76,7 @@ type CommonFlags struct {
 	TargetsFlag                            *string
 	AnalysisCacheClearStrategy             *string
 	CompareQueriesAroundAnalysisCacheClear bool
+	FilterIncompatibleTargets              bool
 }
 
 func StrPtr() *string {
@@ -96,6 +97,7 @@ func RegisterCommonFlags() *CommonFlags {
 		TargetsFlag:                            StrPtr(),
 		AnalysisCacheClearStrategy:             StrPtr(),
 		CompareQueriesAroundAnalysisCacheClear: false,
+		FilterIncompatibleTargets:              true,
 	}
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
 	flag.StringVar(commonFlags.BazelPath, "bazel", "bazel",
@@ -114,6 +116,7 @@ func RegisterCommonFlags() *CommonFlags {
 		"Targets to consider. Accepts any valid `bazel query` expression (see https://bazel.build/reference/query).")
 	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "skip", "Strategy for clearing the analysis cache. Accepted values: skip,shutdown,discard.")
 	flag.BoolVar(&commonFlags.CompareQueriesAroundAnalysisCacheClear, "compare-queries-around-analysis-cache-clear", false, "Whether to check for query result differences before and after analysis cache clears. This is a temporary flag for performing real-world analysis.")
+	flag.BoolVar(&commonFlags.FilterIncompatibleTargets, "filter-incompatible-targets", true, "Whether to filter out incompatible targets from the candidate set of affected targets.")
 	return &commonFlags
 }
 
@@ -173,6 +176,7 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 		BeforeQueryErrorBehavior:               *commonFlags.BeforeQueryErrorBehavior,
 		AnalysisCacheClearStrategy:             *commonFlags.AnalysisCacheClearStrategy,
 		CompareQueriesAroundAnalysisCacheClear: commonFlags.CompareQueriesAroundAnalysisCacheClear,
+		FilterIncompatibleTargets:              commonFlags.FilterIncompatibleTargets,
 	}
 
 	// Non-context attributes

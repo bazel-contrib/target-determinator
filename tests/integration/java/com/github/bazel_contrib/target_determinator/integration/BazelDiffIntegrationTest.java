@@ -143,4 +143,8 @@ public class BazelDiffIntegrationTest extends Tests {
   @Override
   @Ignore("bazel-diff doesn't check file modes")
   public void testChmodFile() {}
+
+  @Override
+  @Ignore("bazel-diff does not filter incompatible targets")
+  public void incompatibleTargetsAreFiltered() throws Exception {}
 }

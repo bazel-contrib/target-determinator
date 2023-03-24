@@ -281,7 +281,7 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 	ruleInputsAfter := ss.NewSortedSet(ruleAfter.GetRuleInput())
 
 	for _, ruleInputLabelString := range ruleInputsAfter.SortedSlice() {
-		ruleInputLabel, err := gazelle_label.Parse(ruleInputLabelString)
+		ruleInputLabel, err := ParseCanonicalLabel(ruleInputLabelString)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse ruleInput %s: %w", ruleInputLabelString, err)
 		}
@@ -411,7 +411,7 @@ func hashTarget(thc *TargetHashCache, labelAndConfiguration LabelAndConfiguratio
 		return hashRule(thc, target.Rule, configuredTarget.Configuration)
 	case build.Target_GENERATED_FILE:
 		hasher := sha256.New()
-		generatingLabel, err := gazelle_label.Parse(*target.GeneratedFile.GeneratingRule)
+		generatingLabel, err := ParseCanonicalLabel(*target.GeneratedFile.GeneratingRule)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse generated file generating rule label %s: %w", *target.GeneratedFile.GeneratingRule, err)
 		}
@@ -454,7 +454,7 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 
 	// Hash rule inputs
 	for _, ruleInputLabelString := range rule.RuleInput {
-		ruleInputLabel, err := gazelle_label.Parse(ruleInputLabelString)
+		ruleInputLabel, err := ParseCanonicalLabel(ruleInputLabelString)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputLabelString, err)
 		}

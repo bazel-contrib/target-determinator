@@ -35,3 +35,16 @@ For places where more targets are returned than expected, the subclass should ov
 For places where a target determinator has a different, equally valid, interpretation of what should be returned, the test method can simply be overridden.
 
 For places where behavior is not supported, or simply incorrect, the overridden test method should be annotated with an `@Ignore` annotation, with an explanation of why.
+
+## Adding new tests
+
+Adding tests is slightly fiddly, as it involves making coordinated changes across the testdata repo and this one.
+
+This is roughly the flow to add tests:
+1. Decide whether this is specific to this TD implementation, or applies generally to all target determinators. If it's general, the new test should go in [java/com/github/bazel_contrib/target_determinator/integration/Tests.java], otherwise in [java/com/github/bazel_contrib/target_determinator/integration/TargetDeterminatorSpecificFlagsTest.java] - in both cases, the existing tests should be easy to crib from.
+1. If new commits are needed in the testdata repo (which is most often the case), clone that, and add commits to it. Each test commit is typically in a unique branch based on https://github.com/bazel-contrib/target-determinator-testdata/commit/6682820b4acb455f13bc3cf8f7d254056092e306 - we try to have each branch have the minimal changes needed for each test, rather than amassing lots of unrelated changes on fewer branches.
+
+   When merging new commits to the testdata repo, we create two refs per added commit - a branch (which may be rewritten in the future), and an immutable tag which will stay around forever. Say we're adding a commit testing upper-case target names, we may call the branch `upper-case-targets`, and we'll create the tag `v0/upper-case-targets` matching it. If we change the branch in the future (e.g. to change the bazel version), we'll rewrite history on the branch, and create a new tag `v1/upper-case-targets`.
+1. For actually testing out your new test locally, you can edit [java/com/github/bazel_contrib/target_determinator/integration/TestdataRepo.java#L18](the TestdataRepo helper class in this repo) to clone from a `file://` URI pointing at your local clone. You probably also want to call `.setCloneAllBranches(true)` on the `Git.cloneRepository` call, otherwise your work-in-progress branches won't be cloned when you run the tests
+
+When sending out new tests for review, feel free to set the clone URI to your fork on GitHub (so the tests actually pass), and include in your PR which commits/branches need to be upstreamed into the testdata repo. The reviewer will push these commits when the code otherwise looks good, and ask you to revert back to the upstream URI.
