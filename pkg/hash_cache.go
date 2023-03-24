@@ -57,17 +57,17 @@ var notComputedBeforeFrozen = fmt.Errorf("TargetHashCache has already been froze
 
 // Hash hashes a given LabelAndConfiguration, returning a sha256 which will change if any of the
 // following change:
-//  * Values of attributes of the label (if it's a rule)
-//  * Contents or mode of source files which are direct inputs to the rule (if it's a rule).
-//  * The name of the rule class (e.g. `java_binary`) of the rule (if it's a rule).
-//  * The rule definition, if it's a rule which was implemented in starlark.
+//   - Values of attributes of the label (if it's a rule)
+//   - Contents or mode of source files which are direct inputs to the rule (if it's a rule).
+//   - The name of the rule class (e.g. `java_binary`) of the rule (if it's a rule).
+//   - The rule definition, if it's a rule which was implemented in starlark.
 //     Note that this is known to over-estimate - it currently factors in the whole contents of any
 //     .bzl files loaded to define the rule, where some of this contents may not be relevant.
-//  * The configuration the label is configured in.
+//   - The configuration the label is configured in.
 //     Note that this is known to over-estimate - per-language fragments are not filtered from this
 //     configuration, which means C++-affecting options are considered to affect Java.
-//  * The above recursively for all rules and files which are depended on by the given
-//    LabelAndConfiguration.
+//   - The above recursively for all rules and files which are depended on by the given
+//     LabelAndConfiguration.
 //     Note that this is known to over-estimate - the configuration of dependencies isn't easily
 //     surfaced by Bazel, so if a dependency exists in multiple configurations, all of them will be
 //     mixed into the hash, even if only one of the configurations is actually relevant.
