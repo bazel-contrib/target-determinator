@@ -24,7 +24,7 @@ import (
 
 // NewTargetHashCache creates a TargetHashCache which uses context for metadata lookups.
 func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget, bazelRelease string) *TargetHashCache {
-	bazelVersionSupportsConfiguredRuleInputs := detectBazelVersionSupportsConfiguredRuleInputs(bazelRelease)
+	bazelVersionSupportsConfiguredRuleInputs := isConfiguredRuleInputsSupported(bazelRelease)
 
 	// For I'm sure good reasons, source files end up with configuration checksums of "null" rather than the empty string.
 	// Dependencies on them in the configured_rule_inputs field, however, use the empty string.
@@ -48,15 +48,17 @@ func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analy
 	}
 }
 
-func detectBazelVersionSupportsConfiguredRuleInputs(releaseString string) bool {
+func isConfiguredRuleInputsSupported(releaseString string) bool {
 	releasePrefix := "release "
 	explanation := " - assuming cquery does not support configured rule inputs (which is supported since bazel 6), which may lead to over-estimates of affected targets"
 	if !strings.HasPrefix(releaseString, releasePrefix) {
 		log.Printf("Bazel wasn't a released version%s", explanation)
+		return false
 	}
 	v, err := version.NewVersion(releaseString[len(releasePrefix):])
 	if err != nil {
 		log.Printf("Failed to parse Bazel version %q: %s", releaseString, explanation)
+		return false
 	}
 	return v.GreaterThanOrEqual(version.Must(version.NewVersion("6.0.0")))
 }
