@@ -490,6 +490,50 @@ public abstract class Tests {
         Set.of("//java/example:IncompatibleTest"));
   }
 
+  @Test
+  public void platformSpecificSrcChanged() throws Exception {
+    String after = Commits.CHANGED_NONLINUX_SRC;
+    if (isLinux()) {
+      after = Commits.CHANGED_LINUX_SRC;
+    }
+
+    doTest(Commits.SELECT_TARGET, after, Set.of("//java/example/simple:simple"));
+  }
+
+  @Test
+  public void ignoredPlatformSpecificSrcChanged() throws Exception {
+    String after = Commits.CHANGED_LINUX_SRC;
+    if (isLinux()) {
+      after = Commits.CHANGED_NONLINUX_SRC;
+    }
+
+    doTest(Commits.SELECT_TARGET, after, Set.of());
+  }
+
+  @Test
+  public void platformSpecificDepChanged() throws Exception {
+    String after = Commits.CHANGED_NONLINUX_DEP;
+    String changedDepTarget = "//java/example/simple:simple_dep";
+    if (isLinux()) {
+      after = Commits.CHANGED_LINUX_DEP;
+      changedDepTarget = "//java/example/simple:simple_dep_linux";
+    }
+
+    doTest(Commits.SELECT_TARGET, after, Set.of("//java/example/simple:simple", changedDepTarget));
+  }
+
+  @Test
+  public void ignoredPlatformSpecificDepChanged() throws Exception {
+    String after = Commits.CHANGED_LINUX_DEP;
+    String changedDepTarget = "//java/example/simple:simple_dep_linux";
+    if (isLinux()) {
+      after = Commits.CHANGED_NONLINUX_DEP;
+      changedDepTarget = "//java/example/simple:simple_dep";
+    }
+
+    doTest(Commits.SELECT_TARGET, after, Set.of(changedDepTarget));
+  }
+
   public void doTest(String commitBefore, String commitAfter, Set<String> expectedTargets) throws TargetComputationErrorException {
     doTest(commitBefore, commitAfter, expectedTargets, Set.of());
   }
@@ -528,6 +572,10 @@ public abstract class Tests {
 
   private String gitBranch() throws Exception {
     return TestdataRepo.gitBranch(testDir);
+  }
+
+  private boolean isLinux() {
+    return "Linux".equals(System.getProperty("os.name"));
   }
 }
 
@@ -616,4 +664,14 @@ class Commits {
       "6452291f3dcea1a5cdb332463308b70325a833e0"; // (v1/sh-test-non-executable) make shell file non-executable
   public static final String INCOMPATIBLE_TARGET =
       "69b4567d904cad46a584901c82c2959be89ae458";
+
+  public static final String SELECT_TARGET = "7562088a92cdb20cccb99b996c1c147b0773e60a";
+
+  public static final String CHANGED_NONLINUX_SRC = "28310014a760aae84e96254e04337a99bf6b39ea";
+
+  public static final String CHANGED_LINUX_SRC = "e46148623b7e3e141f2a1ac00d708db1e65f9397";
+
+  public static final String CHANGED_NONLINUX_DEP = "a8c04169ef46095d040048610b24adbea4027f32";
+
+  public static final String CHANGED_LINUX_DEP = "c5a9f0ad1fc7fc9c3dd31fd904fcc97a55bd2fce";
 }

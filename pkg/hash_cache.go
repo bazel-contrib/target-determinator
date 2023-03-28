@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,21 +17,50 @@ import (
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	gazelle_label "github.com/bazelbuild/bazel-gazelle/label"
+	"github.com/hashicorp/go-version"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
 // NewTargetHashCache creates a TargetHashCache which uses context for metadata lookups.
 func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget, bazelRelease string) *TargetHashCache {
+	bazelVersionSupportsConfiguredRuleInputs := isConfiguredRuleInputsSupported(bazelRelease)
+
+	// For I'm sure good reasons, source files end up with configuration checksums of "null" rather than the empty string.
+	// Dependencies on them in the configured_rule_inputs field, however, use the empty string.
+	// So we normalise "null"s to empty strings.
+	for _, configs := range context {
+		if v, ok := configs["null"]; ok {
+			configs[""] = v
+			delete(configs, "null")
+		}
+	}
+
 	return &TargetHashCache{
 		context: context,
 		fileHashCache: &fileHashCache{
 			cache: make(map[string]*cacheEntry),
 		},
-		bazelRelease: bazelRelease,
-		cache:        make(map[gazelle_label.Label]map[Configuration]*cacheEntry),
-		frozen:       false,
+		bazelRelease:                             bazelRelease,
+		bazelVersionSupportsConfiguredRuleInputs: bazelVersionSupportsConfiguredRuleInputs,
+		cache:                                    make(map[gazelle_label.Label]map[Configuration]*cacheEntry),
+		frozen:                                   false,
 	}
+}
+
+func isConfiguredRuleInputsSupported(releaseString string) bool {
+	releasePrefix := "release "
+	explanation := " - assuming cquery does not support configured rule inputs (which is supported since bazel 6), which may lead to over-estimates of affected targets"
+	if !strings.HasPrefix(releaseString, releasePrefix) {
+		log.Printf("Bazel wasn't a released version%s", explanation)
+		return false
+	}
+	v, err := version.NewVersion(releaseString[len(releasePrefix):])
+	if err != nil {
+		log.Printf("Failed to parse Bazel version %q: %s", releaseString, explanation)
+		return false
+	}
+	return v.GreaterThanOrEqual(version.Must(version.NewVersion("6.0.0")))
 }
 
 // TargetHashCache caches hash computations for targets and files, so that transitive hashes can be
@@ -42,9 +72,10 @@ func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analy
 // In the future we may pre-cache file hashes to avoid this hazard (and to allow more efficient
 // use of threadpools when hashing files).
 type TargetHashCache struct {
-	context       map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget
-	fileHashCache *fileHashCache
-	bazelRelease  string
+	context                                  map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget
+	fileHashCache                            *fileHashCache
+	bazelRelease                             string
+	bazelVersionSupportsConfiguredRuleInputs bool
 
 	frozen bool
 
@@ -57,17 +88,17 @@ var notComputedBeforeFrozen = fmt.Errorf("TargetHashCache has already been froze
 
 // Hash hashes a given LabelAndConfiguration, returning a sha256 which will change if any of the
 // following change:
-//  * Values of attributes of the label (if it's a rule)
-//  * Contents or mode of source files which are direct inputs to the rule (if it's a rule).
-//  * The name of the rule class (e.g. `java_binary`) of the rule (if it's a rule).
-//  * The rule definition, if it's a rule which was implemented in starlark.
+//   - Values of attributes of the label (if it's a rule)
+//   - Contents or mode of source files which are direct inputs to the rule (if it's a rule).
+//   - The name of the rule class (e.g. `java_binary`) of the rule (if it's a rule).
+//   - The rule definition, if it's a rule which was implemented in starlark.
 //     Note that this is known to over-estimate - it currently factors in the whole contents of any
 //     .bzl files loaded to define the rule, where some of this contents may not be relevant.
-//  * The configuration the label is configured in.
+//   - The configuration the label is configured in.
 //     Note that this is known to over-estimate - per-language fragments are not filtered from this
 //     configuration, which means C++-affecting options are considered to affect Java.
-//  * The above recursively for all rules and files which are depended on by the given
-//    LabelAndConfiguration.
+//   - The above recursively for all rules and files which are depended on by the given
+//     LabelAndConfiguration.
 //     Note that this is known to over-estimate - the configuration of dependencies isn't easily
 //     surfaced by Bazel, so if a dependency exists in multiple configurations, all of them will be
 //     mixed into the hash, even if only one of the configurations is actually relevant.
@@ -277,26 +308,28 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 		}
 	}
 
-	ruleInputsBefore := ss.NewSortedSet(ruleBefore.GetRuleInput())
-	ruleInputsAfter := ss.NewSortedSet(ruleAfter.GetRuleInput())
+	ruleInputLabelsBefore, labelsToKnownConfigurationsBefore, err := indexRuleInputs(before, ruleBefore)
+	if err != nil {
+		return nil, err
+	}
+	ruleInputLabelsAfter, labelsToKnownConfigurationsAfter, err := indexRuleInputs(after, ruleAfter)
+	if err != nil {
+		return nil, err
+	}
 
-	for _, ruleInputLabelString := range ruleInputsAfter.SortedSlice() {
-		ruleInputLabel, err := ParseCanonicalLabel(ruleInputLabelString)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse ruleInput %s: %w", ruleInputLabelString, err)
-		}
-		if !ruleInputsBefore.Contains(ruleInputLabelString) {
+	for _, ruleInputLabel := range ruleInputLabelsAfter.SortedSlice() {
+		if !ruleInputLabelsBefore.Contains(ruleInputLabel) {
 			differences = append(differences, Difference{
 				Category: "RuleInputAdded",
-				Key:      ruleInputLabelString,
+				Key:      ruleInputLabel.String(),
 			})
 		} else {
 			// Ideally we would know the configuration of each of these ruleInputs from the
 			// query information, so we could filter away e.g. host changes when we only have a target dep.
 			// Unfortunately, Bazel doesn't currently expose this.
 			// See https://github.com/bazelbuild/bazel/issues/14610#issuecomment-1024460141
-			knownConfigurationsBefore := before.KnownConfigurations(ruleInputLabel)
-			knownConfigurationsAfter := after.KnownConfigurations(ruleInputLabel)
+			knownConfigurationsBefore := labelsToKnownConfigurationsBefore[ruleInputLabel]
+			knownConfigurationsAfter := labelsToKnownConfigurationsAfter[ruleInputLabel]
 
 			for _, knownConfigurationAfter := range knownConfigurationsAfter.SortedSlice() {
 				if knownConfigurationsBefore.Contains(knownConfigurationAfter) {
@@ -317,7 +350,7 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 				} else {
 					differences = append(differences, Difference{
 						Category: "RuleInputChanged",
-						Key:      ruleInputLabelString,
+						Key:      ruleInputLabel.String(),
 						After:    fmt.Sprintf("Configuration: %v", knownConfigurationAfter),
 					})
 				}
@@ -326,23 +359,51 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 				if !knownConfigurationsAfter.Contains(knownConfigurationBefore) {
 					differences = append(differences, Difference{
 						Category: "RuleInputChanged",
-						Key:      ruleInputLabelString,
+						Key:      ruleInputLabel.String(),
 						Before:   fmt.Sprintf("Configuration: %v", knownConfigurationBefore),
 					})
 				}
 			}
 		}
 	}
-	for _, ruleInputLabel := range ruleInputsBefore.SortedSlice() {
-		if !ruleInputsAfter.Contains(ruleInputLabel) {
+	for _, ruleInputLabel := range ruleInputLabelsBefore.SortedSlice() {
+		if !ruleInputLabelsAfter.Contains(ruleInputLabel) {
 			differences = append(differences, Difference{
 				Category: "RuleInputRemoved",
-				Key:      ruleInputLabel,
+				Key:      ruleInputLabel.String(),
 			})
 		}
 	}
 
 	return differences, nil
+}
+
+func indexRuleInputs(index *TargetHashCache, rule *build.Rule) (*ss.SortedSet[gazelle_label.Label], map[gazelle_label.Label]*ss.SortedSet[Configuration], error) {
+	ruleInputs := ss.NewSortedSetFn([]gazelle_label.Label{}, CompareLabels)
+	labelsToConfigurations := make(map[gazelle_label.Label]*ss.SortedSet[Configuration])
+	if index.bazelVersionSupportsConfiguredRuleInputs {
+		for _, configuredRuleInput := range rule.GetConfiguredRuleInput() {
+			ruleInputLabel, err := ParseCanonicalLabel(configuredRuleInput.GetLabel())
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to parse configuredRuleInput label %s: %w", configuredRuleInput.GetLabel(), err)
+			}
+			ruleInputs.Add(ruleInputLabel)
+			if _, ok := labelsToConfigurations[ruleInputLabel]; !ok {
+				labelsToConfigurations[ruleInputLabel] = ss.NewSortedSet([]Configuration{})
+			}
+			labelsToConfigurations[ruleInputLabel].Add(Configuration(configuredRuleInput.GetConfigurationChecksum()))
+		}
+	} else {
+		for _, ruleInputString := range rule.GetRuleInput() {
+			ruleInputLabel, err := ParseCanonicalLabel(ruleInputString)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputString, err)
+			}
+			ruleInputs.Add(ruleInputLabel)
+			labelsToConfigurations[ruleInputLabel] = index.KnownConfigurations(ruleInputLabel)
+		}
+	}
+	return ruleInputs, labelsToConfigurations, nil
 }
 
 func formatLabelWithConfiguration(label gazelle_label.Label, configuration Configuration) string {
@@ -453,33 +514,50 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 	}
 
 	// Hash rule inputs
-	for _, ruleInputLabelString := range rule.RuleInput {
-		ruleInputLabel, err := ParseCanonicalLabel(ruleInputLabelString)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputLabelString, err)
-		}
-		for _, configuration := range thc.KnownConfigurations(ruleInputLabel).SortedSlice() {
+	if thc.bazelVersionSupportsConfiguredRuleInputs {
+		for _, configuredRuleInput := range rule.ConfiguredRuleInput {
+			ruleInputLabel, err := ParseCanonicalLabel(configuredRuleInput.GetLabel())
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse configuredRuleInput label %s: %w", configuredRuleInput.GetLabel(), err)
+			}
+			configuration := Configuration(configuredRuleInput.GetConfigurationChecksum())
 			ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: configuration})
 			if err != nil {
-				if err == labelNotFound {
-					// Two issues (so far) have been found which lead to targets being listed in
-					// ruleInputs but not in the output of a deps query:
-					//
-					// cquery doesn't filter ruleInputs according to used configurations, which means
-					// targets may appear in a Target's ruleInputs even though they weren't returned by
-					// a transitive `deps` cquery.
-					// Assume that a missing target should have been pruned, and that we should ignore it.
-					// See https://github.com/bazelbuild/bazel/issues/14610
-					//
-					// Some targets are also just sometimes missing for reasons we don't yet know.
-					// See https://github.com/bazelbuild/bazel/issues/14617
-					continue
-				}
-				return nil, err
+				return nil, fmt.Errorf("failed to hash configuredRuleInput %s %s: %w", ruleInputLabel, configuration, err)
 			}
 			writeLabel(hasher, ruleInputLabel)
 			hasher.Write([]byte(configuration))
 			hasher.Write(ruleInputHash)
+		}
+	} else {
+		for _, ruleInputLabelString := range rule.RuleInput {
+			ruleInputLabel, err := ParseCanonicalLabel(ruleInputLabelString)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputLabelString, err)
+			}
+			for _, configuration := range thc.KnownConfigurations(ruleInputLabel).SortedSlice() {
+				ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: configuration})
+				if err != nil {
+					if err == labelNotFound {
+						// Two issues (so far) have been found which lead to targets being listed in
+						// ruleInputs but not in the output of a deps query:
+						//
+						// cquery doesn't filter ruleInputs according to used configurations, which means
+						// targets may appear in a Target's ruleInputs even though they weren't returned by
+						// a transitive `deps` cquery.
+						// Assume that a missing target should have been pruned, and that we should ignore it.
+						// See https://github.com/bazelbuild/bazel/issues/14610
+						//
+						// Some targets are also just sometimes missing for reasons we don't yet know.
+						// See https://github.com/bazelbuild/bazel/issues/14617
+						continue
+					}
+					return nil, err
+				}
+				writeLabel(hasher, ruleInputLabel)
+				hasher.Write([]byte(configuration))
+				hasher.Write(ruleInputHash)
+			}
 		}
 	}
 

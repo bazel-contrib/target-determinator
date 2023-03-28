@@ -66,15 +66,6 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
-  public void addingTargetUsedInHostConfiguration() throws Exception {
-    allowOverBuilds(
-        "cquery doesn't factor configuration into ruleInputs, so we can't differentiate between"
-            + " host and target deps. See"
-            + " https://github.com/bazelbuild/bazel/issues/14610#issuecomment-1024460141");
-    super.addingTargetUsedInHostConfiguration();
-  }
-
-  @Override
   public void changingHostConfigurationDoesNotAffectTargetConfiguration() throws Exception {
     allowOverBuilds(
         "cquery doesn't factor configuration into ruleInputs, so we can't differentiate between"

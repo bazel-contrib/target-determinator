@@ -650,7 +650,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	}
 
 	depsPattern := fmt.Sprintf("deps(%s)", targets.String())
-	transitiveResult, err := runToCqueryResult(context, depsPattern)
+	transitiveResult, err := runToCqueryResult(context, depsPattern, true)
 	if err != nil {
 		retErr := fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
 		return &QueryResults{
@@ -670,7 +670,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to parse cquery result: %w", err)
 	}
 
-	matchingTargetResults, err := runToCqueryResult(context, targets.String())
+	matchingTargetResults, err := runToCqueryResult(context, targets.String(), false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
@@ -725,14 +725,20 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	return queryResults, nil
 }
 
-func runToCqueryResult(context *Context, pattern string) (*analysis.CqueryResult, error) {
+func runToCqueryResult(context *Context, pattern string, includeTransitions bool) (*analysis.CqueryResult, error) {
 	log.Printf("Running cquery on %s", pattern)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
+	args := []string{"--output=proto"}
+	if includeTransitions {
+		args = append(args, "--transitions=lite")
+	}
+	args = append(args, pattern)
+
 	returnVal, err := context.BazelCmd.Execute(
 		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
-		[]string{"--output_base", context.BazelOutputBase}, "cquery", "--output=proto", pattern)
+		[]string{"--output_base", context.BazelOutputBase}, "cquery", args...)
 
 	if returnVal != 0 || err != nil {
 		return nil, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
