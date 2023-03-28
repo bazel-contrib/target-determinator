@@ -15,7 +15,7 @@ public class TestdataRepo {
   public static TestdataRepo create() throws Exception {
     Path path = Files.createTempDirectory("target-determinator-testdata");
     Git.cloneRepository()
-        .setURI("https://github.com/illicitonion/target-determinator-testdata.git")
+        .setURI("https://github.com/bazel-contrib/target-determinator-testdata.git")
         .setDirectory(path.toFile())
         // We want to ensure that when using the real testdata repo, any referenced commits have matching tags.
         // We may occasionally rewrite branches' history (e.g. we did when we changed the bazel version being used by all tests), but tags are immutable.
