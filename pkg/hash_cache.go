@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -25,16 +26,6 @@ import (
 // NewTargetHashCache creates a TargetHashCache which uses context for metadata lookups.
 func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget, bazelRelease string) *TargetHashCache {
 	bazelVersionSupportsConfiguredRuleInputs := isConfiguredRuleInputsSupported(bazelRelease)
-
-	// For I'm sure good reasons, source files end up with configuration checksums of "null" rather than the empty string.
-	// Dependencies on them in the configured_rule_inputs field, however, use the empty string.
-	// So we normalise "null"s to empty strings.
-	for _, configs := range context {
-		if v, ok := configs["null"]; ok {
-			configs[""] = v
-			delete(configs, "null")
-		}
-	}
 
 	return &TargetHashCache{
 		context: context,
@@ -137,12 +128,12 @@ func (thc *TargetHashCache) Hash(labelAndConfiguration LabelAndConfiguration) ([
 
 // KnownConfigurations returns the configurations in which a Label is known to be configured.
 func (thc *TargetHashCache) KnownConfigurations(label gazelle_label.Label) *ss.SortedSet[Configuration] {
+	configurations := ss.NewSortedSetFn([]Configuration{}, ConfigurationLess)
 	entry := thc.context[label]
-	configurations := make([]Configuration, 0, len(entry))
 	for c := range entry {
-		configurations = append(configurations, c)
+		configurations.Add(c)
 	}
-	return ss.NewSortedSet(configurations)
+	return configurations
 }
 
 // Freeze should be called before the filesystem is mutated to signify to the TargetHashCache that
@@ -389,9 +380,9 @@ func indexRuleInputs(index *TargetHashCache, rule *build.Rule) (*ss.SortedSet[ga
 			}
 			ruleInputs.Add(ruleInputLabel)
 			if _, ok := labelsToConfigurations[ruleInputLabel]; !ok {
-				labelsToConfigurations[ruleInputLabel] = ss.NewSortedSet([]Configuration{})
+				labelsToConfigurations[ruleInputLabel] = ss.NewSortedSetFn([]Configuration{}, ConfigurationLess)
 			}
-			labelsToConfigurations[ruleInputLabel].Add(Configuration(configuredRuleInput.GetConfigurationChecksum()))
+			labelsToConfigurations[ruleInputLabel].Add(NormalizeConfiguration(configuredRuleInput.GetConfigurationChecksum()))
 		}
 	} else {
 		for _, ruleInputString := range rule.GetRuleInput() {
@@ -408,8 +399,8 @@ func indexRuleInputs(index *TargetHashCache, rule *build.Rule) (*ss.SortedSet[ga
 
 func formatLabelWithConfiguration(label gazelle_label.Label, configuration Configuration) string {
 	s := label.String()
-	if configuration != "null" {
-		s += "[" + string(configuration) + "]"
+	if configuration.String() != "" {
+		s += "[" + configuration.String() + "]"
 	}
 	return s
 }
@@ -435,12 +426,12 @@ func hashTarget(thc *TargetHashCache, labelAndConfiguration LabelAndConfiguratio
 	label := labelAndConfiguration.Label
 	configurationMap, ok := thc.context[label]
 	if !ok {
-		return nil, labelNotFound
+		return nil, fmt.Errorf("label %s not found in contxt: %w", label, labelNotFound)
 	}
 	configuration := labelAndConfiguration.Configuration
 	configuredTarget, ok := configurationMap[configuration]
 	if !ok {
-		return nil, labelNotFound
+		return nil, fmt.Errorf("label %s configuration %s not found in contxt: %w", label, configuration, labelNotFound)
 	}
 	target := configuredTarget.Target
 	switch target.GetType() {
@@ -520,13 +511,13 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse configuredRuleInput label %s: %w", configuredRuleInput.GetLabel(), err)
 			}
-			configuration := Configuration(configuredRuleInput.GetConfigurationChecksum())
-			ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: configuration})
+			ruleInputConfiguration := NormalizeConfiguration(configuredRuleInput.GetConfigurationChecksum())
+			ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: ruleInputConfiguration})
 			if err != nil {
-				return nil, fmt.Errorf("failed to hash configuredRuleInput %s %s: %w", ruleInputLabel, configuration, err)
+				return nil, fmt.Errorf("failed to hash configuredRuleInput %s %s which is a dependency of %s %s: %w", ruleInputLabel, ruleInputConfiguration, rule.GetName(), configuration.GetChecksum(), err)
 			}
 			writeLabel(hasher, ruleInputLabel)
-			hasher.Write([]byte(configuration))
+			hasher.Write(ruleInputConfiguration.ForHashing())
 			hasher.Write(ruleInputHash)
 		}
 	} else {
@@ -538,7 +529,7 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 			for _, configuration := range thc.KnownConfigurations(ruleInputLabel).SortedSlice() {
 				ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: configuration})
 				if err != nil {
-					if err == labelNotFound {
+					if errors.Is(err, labelNotFound) {
 						// Two issues (so far) have been found which lead to targets being listed in
 						// ruleInputs but not in the output of a deps query:
 						//
@@ -555,7 +546,7 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 					return nil, err
 				}
 				writeLabel(hasher, ruleInputLabel)
-				hasher.Write([]byte(configuration))
+				hasher.Write(configuration.ForHashing())
 				hasher.Write(ruleInputHash)
 			}
 		}

@@ -26,8 +26,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type Configuration string
-
 type LabelledGitRev struct {
 	// Label is a description of what the git sha represents which may be useful to humans.
 	Label string
@@ -695,13 +693,13 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		}
 		labels = append(labels, l)
 
-		configuration := mt.Configuration.Checksum
-		labelsToConfigurations[l] = append(labelsToConfigurations[l], Configuration(configuration))
+		configuration := NormalizeConfiguration(mt.Configuration.Checksum)
+		labelsToConfigurations[l] = append(labelsToConfigurations[l], configuration)
 	}
 
 	processedLabelsToConfigurations := make(map[label.Label]*ss.SortedSet[Configuration], len(labels))
 	for l, configurations := range labelsToConfigurations {
-		processedLabelsToConfigurations[l] = ss.NewSortedSet(configurations)
+		processedLabelsToConfigurations[l] = ss.NewSortedSetFn(configurations, ConfigurationLess)
 	}
 
 	matchingTargets := &MatchingTargets{
@@ -833,7 +831,7 @@ func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Confi
 			configuredTargets[l] = make(map[Configuration]*analysis.ConfiguredTarget)
 		}
 
-		configuredTargets[l][Configuration(target.GetConfiguration().GetChecksum())] = target
+		configuredTargets[l][NormalizeConfiguration(target.GetConfiguration().GetChecksum())] = target
 	}
 	return configuredTargets, nil
 }

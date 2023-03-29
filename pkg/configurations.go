@@ -8,6 +8,33 @@ import (
 	"github.com/wI2L/jsondiff"
 )
 
+type Configuration struct {
+	inner string
+}
+
+func NormalizeConfiguration(c string) Configuration {
+	if c == "null" {
+		return Configuration{
+			inner: "",
+		}
+	}
+	return Configuration{
+		inner: c,
+	}
+}
+
+func (c *Configuration) String() string {
+	return c.inner
+}
+
+func (c *Configuration) ForHashing() []byte {
+	return []byte(c.inner)
+}
+
+func ConfigurationLess(l, r Configuration) bool {
+	return l.inner < r.inner
+}
+
 func diffConfigurations(l, r singleConfigurationOutput) (string, error) {
 	patch, err := jsondiff.Compare(l, r)
 	if err != nil {
@@ -49,7 +76,7 @@ func getConfigurationDetails(context *Context) (map[Configuration]singleConfigur
 	}
 	m := make(map[Configuration]singleConfigurationOutput)
 	for _, c := range configurations {
-		configuration := Configuration(c.ConfigHash)
+		configuration := NormalizeConfiguration(c.ConfigHash)
 		if _, ok := m[configuration]; ok {
 			return nil, fmt.Errorf("saw duplicate configuration for %q", configuration)
 		}
