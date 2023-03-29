@@ -160,7 +160,7 @@ func TestDigestTree(t *testing.T) {
 
 	labelAndConfiguration := pkg.LabelAndConfiguration{
 		Label:         mustParseLabel("//HelloWorld:HelloWorld"),
-		Configuration: configurationChecksum,
+		Configuration: pkg.NormalizeConfiguration(configurationChecksum),
 	}
 
 	const defaultBazelVersion = "release 5.1.1"

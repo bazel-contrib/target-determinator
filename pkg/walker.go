@@ -74,8 +74,8 @@ func DiffSingleLabel(beforeMetadata, afterMetadata *QueryResults, includeDiffere
 					diff, _ := diffConfigurations(beforeMetadata.configurations[configurationsBefore[0]], afterMetadata.configurations[configurationsAfter[0]])
 					difference = Difference{
 						Category: "ChangedConfiguration",
-						Before:   string(configurationsBefore[0]),
-						After:    string(configurationsAfter[0]),
+						Before:   configurationsBefore[0].String(),
+						After:    configurationsAfter[0].String(),
 						Key:      diff,
 					}
 				}
