@@ -66,6 +66,15 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
+  public void addingTargetUsedInHostConfiguration() throws Exception {
+    allowOverBuilds(
+        "cquery doesn't factor configuration into ruleInputs, so we can't differentiate between"
+            + " host and target deps. See"
+            + " https://github.com/bazelbuild/bazel/issues/14610#issuecomment-1024460141");
+    super.addingTargetUsedInHostConfiguration();
+  }
+
+  @Override
   public void changingHostConfigurationDoesNotAffectTargetConfiguration() throws Exception {
     allowOverBuilds(
         "cquery doesn't factor configuration into ruleInputs, so we can't differentiate between"
@@ -97,5 +106,11 @@ public class TargetDeterminatorIntegrationTest extends Tests {
       assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
       assertThat(e.getStderr(), CoreMatchers.containsString("target '//java/example/simple:simple' is not visible from target '//java/example:ExampleTest'"));
     }
+  }
+
+  @Override
+  public void ignoredPlatformSpecificDepChanged() throws Exception {
+    allowOverBuilds("Platform-specific narrowing is disabled due to https://github.com/bazelbuild/bazel/issues/17916");
+    super.ignoredPlatformSpecificDepChanged();
   }
 }
