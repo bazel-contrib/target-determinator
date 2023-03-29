@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,7 +17,6 @@ import (
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	gazelle_label "github.com/bazelbuild/bazel-gazelle/label"
-	"github.com/hashicorp/go-version"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -40,18 +38,8 @@ func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analy
 }
 
 func isConfiguredRuleInputsSupported(releaseString string) bool {
-	releasePrefix := "release "
-	explanation := " - assuming cquery does not support configured rule inputs (which is supported since bazel 6), which may lead to over-estimates of affected targets"
-	if !strings.HasPrefix(releaseString, releasePrefix) {
-		log.Printf("Bazel wasn't a released version%s", explanation)
-		return false
-	}
-	v, err := version.NewVersion(releaseString[len(releasePrefix):])
-	if err != nil {
-		log.Printf("Failed to parse Bazel version %q: %s", releaseString, explanation)
-		return false
-	}
-	return v.GreaterThanOrEqual(version.Must(version.NewVersion("6.0.0")))
+	// Disabled until https://github.com/bazelbuild/bazel/issues/17916 is resolved
+	return false
 }
 
 // TargetHashCache caches hash computations for targets and files, so that transitive hashes can be
