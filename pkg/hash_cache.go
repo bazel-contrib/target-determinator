@@ -514,7 +514,16 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputLabelString, err)
 			}
-			for _, configuration := range thc.KnownConfigurations(ruleInputLabel).SortedSlice() {
+			var depConfigurations []Configuration
+			if rule.GetRuleClass() == "alias" {
+				// Aliases don't transition, and we've seen aliases expanding across configurations cause dependency cycles for nogo targets.
+				// Narrow just to the current configuration in this case.
+				depConfiguration := NormalizeConfiguration(configuration.GetChecksum())
+				depConfigurations = []Configuration{depConfiguration}
+			} else {
+				depConfigurations = thc.KnownConfigurations(ruleInputLabel).SortedSlice()
+			}
+			for _, configuration := range depConfigurations {
 				ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: configuration})
 				if err != nil {
 					if errors.Is(err, labelNotFound) {
