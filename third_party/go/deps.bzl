@@ -28,8 +28,8 @@ def go_dependencies():
     go_repository(
         name = "com_github_bazelbuild_bazel_gazelle",
         importpath = "github.com/bazelbuild/bazel-gazelle",
-        sum = "h1:DhZgXIFoHyJT4W8p5oDfC5yCqDnnx9ijiTG1Cm9rIVw=",
-        version = "v0.30.1-0.20230501114844-23226de73881",
+        sum = "h1:TxcWafIs8LlRONmcmp7KA83f0//+BfvAuHVkibsrT2U=",
+        version = "v0.25.1-0.20220406134132-bd319f810c16",
     )
     go_repository(
         name = "com_github_bazelbuild_buildtools",
