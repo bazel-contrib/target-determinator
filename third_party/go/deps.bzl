@@ -28,20 +28,20 @@ def go_dependencies():
     go_repository(
         name = "com_github_bazelbuild_bazel_gazelle",
         importpath = "github.com/bazelbuild/bazel-gazelle",
-        sum = "h1:TxcWafIs8LlRONmcmp7KA83f0//+BfvAuHVkibsrT2U=",
-        version = "v0.25.1-0.20220406134132-bd319f810c16",
+        sum = "h1:DhZgXIFoHyJT4W8p5oDfC5yCqDnnx9ijiTG1Cm9rIVw=",
+        version = "v0.30.1-0.20230501114844-23226de73881",
     )
     go_repository(
         name = "com_github_bazelbuild_buildtools",
         importpath = "github.com/bazelbuild/buildtools",
-        sum = "h1:ox8T5nCkvLflRgKZ6uzzdvLDN3gbNZBgLBqA5Xgn7QA=",
-        version = "v0.0.0-20220323134444-a9f46b2bb3de",
+        sum = "h1:XmPu4mXICgdGnC5dXGjUGbwUD/kUmS0l5Aop3LaevBM=",
+        version = "v0.0.0-20230317132445-9c3c1fc0106e",
     )
     go_repository(
         name = "com_github_bazelbuild_rules_go",
         importpath = "github.com/bazelbuild/rules_go",
-        sum = "h1:8/MDe6zCE7nYKXhlbamM1izUgJjw2ce7M5kd4QKF/3Y=",
-        version = "v0.31.0",
+        sum = "h1:YWJ+hbwEOB/PtIFCRMDnvWVSpwPFFGEpdIB6E3bt8X4=",
+        version = "v0.39.0",
     )
     go_repository(
         name = "com_github_beorn7_perks",
@@ -52,8 +52,8 @@ def go_dependencies():
     go_repository(
         name = "com_github_bmatcuk_doublestar_v4",
         importpath = "github.com/bmatcuk/doublestar/v4",
-        sum = "h1:X0krlUVAVmtr2cRoTqR8aDMrDqnB36ht8wpWTiQ3jsA=",
-        version = "v4.0.2",
+        sum = "h1:HTuxyug8GyFbRkrffIpzNCSK4luc0TY3wzXvzIZhEXc=",
+        version = "v4.6.0",
     )
     go_repository(
         name = "com_github_cespare_xxhash_v2",
@@ -88,8 +88,8 @@ def go_dependencies():
     go_repository(
         name = "com_github_fsnotify_fsnotify",
         importpath = "github.com/fsnotify/fsnotify",
-        sum = "h1:mZcQUHVQUQWoPXXtuf9yuEXKudkV2sx1E06UadKWpgI=",
-        version = "v1.5.1",
+        sum = "h1:n+5WquG0fcWoWp6xPWfHdbskMCQaFnG6PfBrh1Ky4HY=",
+        version = "v1.6.0",
     )
     go_repository(
         name = "com_github_garyburd_redigo",
@@ -232,8 +232,8 @@ def go_dependencies():
     go_repository(
         name = "com_github_pelletier_go_toml",
         importpath = "github.com/pelletier/go-toml",
-        sum = "h1:tjENF6MfZAg8e4ZmZTeWaWiT2vXtsoO6+iuOjFhECwM=",
-        version = "v1.9.4",
+        sum = "h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3ve8=",
+        version = "v1.9.5",
     )
     go_repository(
         name = "com_github_pierrec_lz4",
