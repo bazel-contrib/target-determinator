@@ -85,6 +85,11 @@ func Test_stringSliceContainsStartingWith(t *testing.T) {
 
 func Test_ParseCanonicalLabel(t *testing.T) {
 	for _, tt := range []string{
+		"@//label",
+		"@//label:package",
+		"//label:package",
+		"label:package",
+		":package",
 		"@rules_python~0.21.0~pip~pip_boto3//:pkg",
 	} {
 		_, err := ParseCanonicalLabel(tt)
