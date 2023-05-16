@@ -534,6 +534,18 @@ public abstract class Tests {
     doTest(Commits.SELECT_TARGET, after, Set.of(changedDepTarget));
   }
 
+  @Test
+  public void aliasTargetIsDetectedIfActualTargetChanged() throws Exception {
+    doTest(Commits.ALIAS_ADD_TARGET, Commits.ALIAS_CHANGE_TARGET_THROUGH_ALIAS,
+            Set.of("//java/example:ExampleTest", "//java/example:example_test"));
+  }
+
+  @Test
+  public void aliasTargetIsDetectedIfActualLabelChanged() throws Exception {
+    doTest(Commits.ALIAS_ADD_TARGET, Commits.ALIAS_CHANGE_ACTUAL,
+            Set.of("//java/example:example_test"));
+  }
+
   public void doTest(String commitBefore, String commitAfter, Set<String> expectedTargets) throws TargetComputationErrorException {
     doTest(commitBefore, commitAfter, expectedTargets, Set.of());
   }
@@ -674,4 +686,10 @@ class Commits {
   public static final String CHANGED_NONLINUX_DEP = "a8c04169ef46095d040048610b24adbea4027f32";
 
   public static final String CHANGED_LINUX_DEP = "c5a9f0ad1fc7fc9c3dd31fd904fcc97a55bd2fce";
+
+  public static final String ALIAS_ADD_TARGET = "194478bcdfb3f8c40b3dd02d06d2be1cd335b83b";
+
+  public static final String ALIAS_CHANGE_ACTUAL = "ec19104291a3ea7cb61fb54ecdeaee73127bf284";
+
+  public static final String ALIAS_CHANGE_TARGET_THROUGH_ALIAS = "3d9788053a2eed1a2f3beb05070872526ebdf76e";
 }
