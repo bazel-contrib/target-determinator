@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -753,20 +754,51 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 
 func findCompatibleTargets(context *Context, pattern string) (map[label.Label]bool, error) {
 	log.Printf("Finding compatible targets under %s", pattern)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	returnVal, err := context.BazelCmd.Execute(
-		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
-		[]string{"--output_base", context.BazelOutputBase}, "cquery", pattern,
-		"--output=starlark",
-		"--starlark:expr=target.label if \"IncompatiblePlatformProvider\" not in providers(target) else \"\"",
-	)
-	if returnVal != 0 || err != nil {
-		return nil, fmt.Errorf("failed to run compatibility-filtering cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+	compatibleTargets := make(map[label.Label]bool)
+
+	// Add the `or []` to work around https://github.com/bazelbuild/bazel/issues/17749 which was fixed in 6.2.0.
+	queryFilter := ` if "IncompatiblePlatformProvider" not in (providers(target) or []) else ""`
+
+	// Separate alias and non-alias targets to work around https://github.com/bazelbuild/bazel/issues/18421
+	{
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		returnVal, err := context.BazelCmd.Execute(
+			BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
+			[]string{"--output_base", context.BazelOutputBase}, "cquery", fmt.Sprintf("%s - kind(alias, %s)", pattern, pattern),
+			"--output=starlark",
+			"--starlark:expr=target.label"+queryFilter,
+		)
+		if returnVal != 0 || err != nil {
+			return nil, fmt.Errorf("failed to run compatibility-filtering cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+		}
+		if err := addCompatibleTargetsLines(&stdout, compatibleTargets); err != nil {
+			return nil, err
+		}
 	}
 
-	compatibleTargets := make(map[label.Label]bool)
-	scanner := bufio.NewScanner(&stdout)
+	{
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		returnVal, err := context.BazelCmd.Execute(
+			BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
+			[]string{"--output_base", context.BazelOutputBase}, "cquery", fmt.Sprintf("kind(alias, %s)", pattern),
+			"--output=starlark",
+			// Example output of `repr(target)` for an alias target: `<alias target //java/example:example_test of //java/example:OtherExampleTest>`
+			"--starlark:expr=repr(target).split(\" \")[2]"+queryFilter,
+		)
+		if returnVal != 0 || err != nil {
+			return nil, fmt.Errorf("failed to run alias compatibility-filtering cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+		}
+		if err := addCompatibleTargetsLines(&stdout, compatibleTargets); err != nil {
+			return nil, err
+		}
+	}
+	return compatibleTargets, nil
+}
+
+func addCompatibleTargetsLines(r io.Reader, compatibleTargets map[label.Label]bool) error {
+	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		labelStr := scanner.Text()
 		if labelStr == "" {
@@ -774,11 +806,11 @@ func findCompatibleTargets(context *Context, pattern string) (map[label.Label]bo
 		}
 		label, err := ParseCanonicalLabel(labelStr)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse label from compatibility-filtering: %q: %w", labelStr, err)
+			return fmt.Errorf("failed to parse label from compatibility-filtering: %q: %w", labelStr, err)
 		}
 		compatibleTargets[label] = true
 	}
-	return compatibleTargets, nil
+	return nil
 }
 
 // MatchingTargets stores the top-level targets within a repository,
