@@ -1,0 +1,13 @@
+diff --git label/label.go label/label.go
+index ef058b0..c3d2cd2 100644
+--- label/label.go
++++ label/label.go
+@@ -62,7 +62,7 @@ func New(repo, pkg, name string) Label {
+ var NoLabel = Label{}
+
+ var (
+-	labelRepoRegexp = regexp.MustCompile(`^@$|^[A-Za-z.-][A-Za-z0-9_.-]*$`)
++	labelRepoRegexp = regexp.MustCompile(`^@$|^[A-Za-z0-9.-][A-Za-z0-9_.-]*$`)
+ 	labelPkgRegexp  = regexp.MustCompile(`^[A-Za-z0-9/._@-]*$`)
+ 	// This was taken from https://docs.bazel.build/versions/main/build-ref.html#name
+ 	labelNameRegexp = regexp.MustCompile("^[A-Za-z0-9!%-@^_` \"#$&'()*-+,;<=>?\\[\\]{|}~/.]*$")
