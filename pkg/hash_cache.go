@@ -515,11 +515,24 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 				return nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputLabelString, err)
 			}
 			var depConfigurations []Configuration
+			// Aliases don't transition, and we've seen aliases expanding across configurations cause dependency cycles for nogo targets.
 			if rule.GetRuleClass() == "alias" {
-				// Aliases don't transition, and we've seen aliases expanding across configurations cause dependency cycles for nogo targets.
-				// Narrow just to the current configuration in this case.
-				depConfiguration := NormalizeConfiguration(configuration.GetChecksum())
-				depConfigurations = []Configuration{depConfiguration}
+				knownDepConfigurations := thc.context[ruleInputLabel]
+				isSourceFile := true
+				for _, ct := range knownDepConfigurations {
+					if ct.GetTarget().GetType() != build.Target_SOURCE_FILE {
+						isSourceFile = false
+					}
+				}
+
+				if isSourceFile {
+					// If it's a source file, it doesn't exist in the current configuration, but does exist in the empty configuration.
+					// Accordingly, we need to explicitly transition to the empty configuration.
+					depConfigurations = []Configuration{NormalizeConfiguration("")}
+				} else {
+					// If it's not a source file, narrow just to the current configuration - we know there was no transition, so we must be in the same configuration.
+					depConfigurations = []Configuration{NormalizeConfiguration(configuration.GetChecksum())}
+				}
 			} else {
 				depConfigurations = thc.KnownConfigurations(ruleInputLabel).SortedSlice()
 			}
