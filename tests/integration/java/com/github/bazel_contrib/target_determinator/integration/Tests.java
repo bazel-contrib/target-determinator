@@ -541,6 +541,12 @@ public abstract class Tests {
   }
 
   @Test
+  public void aliasTargetIsDetectedIfActualFileChanged() throws Exception {
+    doTest(Commits.ALIAS_ADD_TARGET_TO_FILE, Commits.ALIAS_CHANGE_TARGET_THROUGH_ALIAS_TO_FILE,
+            Set.of("//java/example:ExampleTest", "//java/example:ExampleTestSource"));
+  }
+
+  @Test
   public void aliasTargetIsDetectedIfActualLabelChanged() throws Exception {
     doTest(Commits.ALIAS_ADD_TARGET, Commits.ALIAS_CHANGE_ACTUAL,
             Set.of("//java/example:example_test"));
@@ -692,4 +698,8 @@ class Commits {
   public static final String ALIAS_CHANGE_ACTUAL = "ec19104291a3ea7cb61fb54ecdeaee73127bf284";
 
   public static final String ALIAS_CHANGE_TARGET_THROUGH_ALIAS = "3d9788053a2eed1a2f3beb05070872526ebdf76e";
+
+  public static final String ALIAS_ADD_TARGET_TO_FILE = "7be0f96f26742daec661c2ebfbb08b88b6355a3b";
+
+  public static final String ALIAS_CHANGE_TARGET_THROUGH_ALIAS_TO_FILE = "68fbd3661f3626e2df6a55b079444adbf76b5a3b";
 }
