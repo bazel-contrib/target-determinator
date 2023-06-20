@@ -154,7 +154,7 @@ func parseFlags() (*driverFlags, error) {
 	}
 
 	var err error
-	flags.revisionBefore, err = cli.ValidateCommonFlags()
+	flags.revisionBefore, err = cli.ValidateCommonFlags("driver", flags.commonFlags)
 	if err != nil {
 		return nil, err
 	}

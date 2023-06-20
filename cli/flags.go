@@ -4,11 +4,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/bazel-contrib/target-determinator/common"
 	"github.com/bazel-contrib/target-determinator/pkg"
+	"github.com/bazel-contrib/target-determinator/version"
 )
 
 type IgnoreFileFlag []common.RelPath
@@ -65,6 +67,7 @@ func (e *EnforceCleanFlag) Set(value string) error {
 }
 
 type CommonFlags struct {
+	Version                                bool
 	WorkingDirectory                       *string
 	BazelPath                              *string
 	BazelStartupOpts                       *MultipleStrings
@@ -86,6 +89,7 @@ func StrPtr() *string {
 
 func RegisterCommonFlags() *CommonFlags {
 	commonFlags := CommonFlags{
+		Version:                                false,
 		WorkingDirectory:                       StrPtr(),
 		BazelPath:                              StrPtr(),
 		BazelStartupOpts:                       &MultipleStrings{},
@@ -99,6 +103,7 @@ func RegisterCommonFlags() *CommonFlags {
 		CompareQueriesAroundAnalysisCacheClear: false,
 		FilterIncompatibleTargets:              true,
 	}
+	flag.BoolVar(&commonFlags.Version, "version", false, "Print the version of the tool and exit.")
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
 	flag.StringVar(commonFlags.BazelPath, "bazel", "bazel",
 		"Bazel binary (basename on $PATH, or absolute or relative path) to run.")
@@ -127,7 +132,12 @@ type CommonConfig struct {
 }
 
 // ValidateCommonFlags ensures that the argument follow the right format
-func ValidateCommonFlags() (targetPattern string, err error) {
+func ValidateCommonFlags(commandName string, flags *CommonFlags) (targetPattern string, err error) {
+	if flags.Version {
+		fmt.Printf("%s %s\n", commandName, version.Version)
+		os.Exit(0)
+	}
+
 	positional := flag.Args()
 	if len(positional) != 1 {
 		return "", fmt.Errorf("expected one positional argument, <before-revision>, but got %d", len(positional))

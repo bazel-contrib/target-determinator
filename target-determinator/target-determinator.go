@@ -96,7 +96,7 @@ func parseFlags() (*targetDeterminatorFlags, error) {
 	flag.Parse()
 
 	var err error
-	flags.revisionBefore, err = cli.ValidateCommonFlags()
+	flags.revisionBefore, err = cli.ValidateCommonFlags("target-determinator", flags.commonFlags)
 	if err != nil {
 		return nil, err
 	}
