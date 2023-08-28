@@ -28,20 +28,20 @@ def go_dependencies():
     go_repository(
         name = "com_github_bazelbuild_bazel_gazelle",
         importpath = "github.com/bazelbuild/bazel-gazelle",
-        sum = "h1:DhZgXIFoHyJT4W8p5oDfC5yCqDnnx9ijiTG1Cm9rIVw=",
-        version = "v0.30.1-0.20230501114844-23226de73881",
+        sum = "h1:bYmCr7SL8LAAdmh5l4LeFLvpQmMitneKuKPrjmEVHZw=",
+        version = "v0.32.0",
     )
     go_repository(
         name = "com_github_bazelbuild_buildtools",
         importpath = "github.com/bazelbuild/buildtools",
-        sum = "h1:XmPu4mXICgdGnC5dXGjUGbwUD/kUmS0l5Aop3LaevBM=",
-        version = "v0.0.0-20230317132445-9c3c1fc0106e",
+        sum = "h1:Fl1FfItZp34QIQmmDTbZXHB5XA6JfbNNfH7tRRGWvQo=",
+        version = "v0.0.0-20230510134650-37bd1811516d",
     )
     go_repository(
         name = "com_github_bazelbuild_rules_go",
         importpath = "github.com/bazelbuild/rules_go",
-        sum = "h1:YWJ+hbwEOB/PtIFCRMDnvWVSpwPFFGEpdIB6E3bt8X4=",
-        version = "v0.39.0",
+        sum = "h1:wkJLUDx59dntWMghuL8++GteoU1To6sRoKJXuyFtmf8=",
+        version = "v0.39.1",
     )
     go_repository(
         name = "com_github_beorn7_perks",
@@ -228,12 +228,6 @@ def go_dependencies():
         importpath = "github.com/otiai10/mint",
         sum = "h1:7JgpsBaN0uMkyju4tbYHu0mnM55hNKVYLsXmwr15NQI=",
         version = "v1.3.3",
-    )
-    go_repository(
-        name = "com_github_pelletier_go_toml",
-        importpath = "github.com/pelletier/go-toml",
-        sum = "h1:4yBQzkHv+7BHq2PQUZF3Mx0IYxG7LsP222s7Agd3ve8=",
-        version = "v1.9.5",
     )
     go_repository(
         name = "com_github_pierrec_lz4",
