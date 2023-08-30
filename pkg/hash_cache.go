@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -17,6 +18,7 @@ import (
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	gazelle_label "github.com/bazelbuild/bazel-gazelle/label"
+	"github.com/hashicorp/go-version"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -38,8 +40,18 @@ func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analy
 }
 
 func isConfiguredRuleInputsSupported(releaseString string) bool {
-	// Disabled until https://github.com/bazelbuild/bazel/issues/17916 is resolved
-	return false
+	releasePrefix := "release "
+	explanation := " - assuming cquery does not support configured rule inputs (which is supported from bazel 7), which may lead to over-estimates of affected targets"
+	if !strings.HasPrefix(releaseString, releasePrefix) {
+		log.Printf("Bazel wasn't a released version%s", explanation)
+		return false
+	}
+	v, err := version.NewVersion(releaseString[len(releasePrefix):])
+	if err != nil {
+		log.Printf("Failed to parse Bazel version %q: %s", releaseString, explanation)
+		return false
+	}
+	return v.GreaterThanOrEqual(version.Must(version.NewVersion("7.0.0-pre.20230628.2")))
 }
 
 // TargetHashCache caches hash computations for targets and files, so that transitive hashes can be
@@ -492,6 +504,8 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 		hasher.Write(protoBytes)
 	}
 
+	ownConfiguration := NormalizeConfiguration(configuration.GetChecksum())
+
 	// Hash rule inputs
 	if thc.bazelVersionSupportsConfiguredRuleInputs {
 		for _, configuredRuleInput := range rule.ConfiguredRuleInput {
@@ -500,6 +514,16 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 				return nil, fmt.Errorf("failed to parse configuredRuleInput label %s: %w", configuredRuleInput.GetLabel(), err)
 			}
 			ruleInputConfiguration := NormalizeConfiguration(configuredRuleInput.GetConfigurationChecksum())
+			if ruleInputConfiguration.String() == "" {
+				// Configured Rule Inputs which aren't transitioned end up with an empty string as their configuration.
+				// This _either_ means there was no transition, _or_ means that the input was a source file (so didn't have a configuration at all).
+				// Fortunately, these are mutually exclusive - a target either has a configuration or doesn't, so we look up which one exists.
+				if _, ok := thc.context[ruleInputLabel][ownConfiguration]; ok {
+					ruleInputConfiguration = ownConfiguration
+				} else if _, ok := thc.context[ruleInputLabel][ruleInputConfiguration]; !ok {
+					return nil, fmt.Errorf("configuredRuleInputs for %s included %s in configuration %s but it couldn't be found either unconfigured or in the depending target's configuration %s. This probably indicates a bug in Bazel - please report it with a git repo that reproduces at https://github.com/bazel-contrib/target-determinator/issues so we can investigate", rule.GetName(), ruleInputLabel, ruleInputConfiguration, ownConfiguration)
+				}
+			}
 			ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: ruleInputConfiguration})
 			if err != nil {
 				return nil, fmt.Errorf("failed to hash configuredRuleInput %s %s which is a dependency of %s %s: %w", ruleInputLabel, ruleInputConfiguration, rule.GetName(), configuration.GetChecksum(), err)

@@ -7,6 +7,7 @@ require (
 	github.com/bazelbuild/bazel-gazelle v0.32.0
 	github.com/google/btree v1.1.2
 	github.com/google/uuid v1.3.0
+	github.com/hashicorp/go-version v1.6.0
 	github.com/otiai10/copy v1.7.1-0.20211223015809-9aae5f77261f
 	github.com/wI2L/jsondiff v0.2.0
 	google.golang.org/protobuf v1.27.1
