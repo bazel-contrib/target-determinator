@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -52,27 +51,7 @@ func isConfiguredRuleInputsSupported(releaseString string) bool {
 		log.Printf("Failed to parse Bazel version %q: %s", releaseString, explanation)
 		return false
 	}
-	if v.GreaterThanOrEqual(version.Must(version.NewVersion("7.0.0"))) {
-		return true
-	}
-
-	// Support 7.0.0 pre-releases which include https://github.com/bazelbuild/bazel/commit/9575c7fa86458717c154f08ff8a7f7aff000f6ae
-	segments := v.Segments()
-	if len(segments) == 3 && segments[0] == 7 && segments[1] == 0 && segments[2] == 0 {
-		pre := v.Prerelease()
-		prereleasePrefix := "pre."
-		if strings.HasPrefix(pre, prereleasePrefix) {
-			dateString := strings.Split(pre[len(prereleasePrefix):], ".")[0]
-			dateNumber, err := strconv.Atoi(dateString)
-			if err == nil {
-				if dateNumber >= 20230628 {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
+	return v.GreaterThanOrEqual(version.Must(version.NewVersion("7.0.0-pre.20230628.2")))
 }
 
 // TargetHashCache caches hash computations for targets and files, so that transitive hashes can be
@@ -542,7 +521,7 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 				if _, ok := thc.context[ruleInputLabel][ownConfiguration]; ok {
 					ruleInputConfiguration = ownConfiguration
 				} else if _, ok := thc.context[ruleInputLabel][ruleInputConfiguration]; !ok {
-					return nil, fmt.Errorf("configuredRuleInputs for %s included %s in configuration %s but it couldn't be found either unconfigured or in the depending target's configuration %s", rule.GetName(), ruleInputLabel, ruleInputConfiguration, ownConfiguration)
+					return nil, fmt.Errorf("configuredRuleInputs for %s included %s in configuration %s but it couldn't be found either unconfigured or in the depending target's configuration %s. This probably indicates a bug in Bazel - please report it with a git repo that reproduces at https://github.com/bazel-contrib/target-determinator/issues so we can investigate", rule.GetName(), ruleInputLabel, ruleInputConfiguration, ownConfiguration)
 				}
 			}
 			ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: ruleInputConfiguration})

@@ -1,4 +1,4 @@
-package pkg_test
+package pkg
 
 import (
 	"encoding/hex"
@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bazel-contrib/target-determinator/pkg"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	"github.com/bazelbuild/bazel-gazelle/label"
@@ -29,7 +28,7 @@ func TestAbsolutifiesSourceFileInBuildDirBazel4(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/java/example/simple/Dep.java"
-	got := pkg.AbsolutePath(&target)
+	got := AbsolutePath(&target)
 	if want != got {
 		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
@@ -45,7 +44,7 @@ func TestAbsolutifiesSourceFileInNestedDirBazel4(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/java/example/simple/just/a/File.java"
-	got := pkg.AbsolutePath(&target)
+	got := AbsolutePath(&target)
 	if want != got {
 		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
@@ -61,7 +60,7 @@ func TestAbsolutifiesSourceFileInBuildDirBazel5(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/java/example/simple/Dep.java"
-	got := pkg.AbsolutePath(&target)
+	got := AbsolutePath(&target)
 	if want != got {
 		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
@@ -77,7 +76,7 @@ func TestAbsolutifiesSourceFileInNestedDirBazel5(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/java/example/simple/just/a/File.java"
-	got := pkg.AbsolutePath(&target)
+	got := AbsolutePath(&target)
 	if want != got {
 		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
@@ -95,7 +94,7 @@ func TestAbsolutifiesBuildFile(t *testing.T) {
 		},
 	}
 	const want = "/some/path/to/BUILD.bazel"
-	got := pkg.AbsolutePath(&target)
+	got := AbsolutePath(&target)
 	if want != got {
 		t.Fatalf("Wrong absolute path: want %v got %v", want, got)
 	}
@@ -105,7 +104,7 @@ func TestDigestsSingleSourceFile(t *testing.T) {
 	_, cqueryResult := layoutProject(t)
 	thc := parseResult(t, cqueryResult, "release 5.1.1")
 
-	hash, err := thc.Hash(pkg.LabelAndConfiguration{
+	hash, err := thc.Hash(LabelAndConfiguration{
 		Label: mustParseLabel("//HelloWorld:HelloWorld.java"),
 	})
 	if err != nil {
@@ -125,7 +124,7 @@ func TestDigestingMissingSourceFileIsNotError(t *testing.T) {
 	_, cqueryResult := layoutProject(t)
 	thc := parseResult(t, cqueryResult, "release 5.1.1")
 
-	_, err := thc.Hash(pkg.LabelAndConfiguration{
+	_, err := thc.Hash(LabelAndConfiguration{
 		Label: mustParseLabel("//HelloWorld:ThereIsNoWorld.java"),
 	})
 	if err != nil {
@@ -144,7 +143,7 @@ func TestDigestingDirectoryIsNotError(t *testing.T) {
 	_, cqueryResult := layoutProject(t)
 	thc := parseResult(t, cqueryResult, "release 5.1.1")
 
-	_, err := thc.Hash(pkg.LabelAndConfiguration{
+	_, err := thc.Hash(LabelAndConfiguration{
 		Label: mustParseLabel("//HelloWorld:InhabitedPlanets"),
 	})
 	if err != nil {
@@ -158,9 +157,9 @@ func TestDigestTree(t *testing.T) {
 	//       v
 	// HelloWorld.java
 
-	labelAndConfiguration := pkg.LabelAndConfiguration{
+	labelAndConfiguration := LabelAndConfiguration{
 		Label:         mustParseLabel("//HelloWorld:HelloWorld"),
-		Configuration: pkg.NormalizeConfiguration(configurationChecksum),
+		Configuration: NormalizeConfiguration(configurationChecksum),
 	}
 
 	const defaultBazelVersion = "release 5.1.1"
@@ -380,12 +379,12 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 	return dir, &cqueryResult
 }
 
-func parseResult(t *testing.T, result *analysis.CqueryResult, bazelRelease string) *pkg.TargetHashCache {
-	cqueryResult, err := pkg.ParseCqueryResult(result)
+func parseResult(t *testing.T, result *analysis.CqueryResult, bazelRelease string) *TargetHashCache {
+	cqueryResult, err := ParseCqueryResult(result)
 	if err != nil {
 		t.Fatalf("Failed to parse cquery result: %v", err)
 	}
-	return pkg.NewTargetHashCache(cqueryResult, bazelRelease)
+	return NewTargetHashCache(cqueryResult, bazelRelease)
 }
 
 func areHashesEqual(left, right []byte) bool {
@@ -393,9 +392,26 @@ func areHashesEqual(left, right []byte) bool {
 }
 
 func mustParseLabel(s string) label.Label {
-	l, err := pkg.ParseCanonicalLabel(s)
+	l, err := ParseCanonicalLabel(s)
 	if err != nil {
 		panic(err)
 	}
 	return l
+}
+
+func Test_isConfiguredRuleInputsSupported(t *testing.T) {
+	for version, want := range map[string]bool{
+		"release 6.3.1":                false,
+		"release 7.0.0-pre.20230530.3": false,
+		"release 7.0.0-pre.20230628.2": true,
+		"release 7.0.0-pre.20230816.3": true,
+		"release 7.0.0":                true,
+	} {
+		t.Run(version, func(t *testing.T) {
+			got := isConfiguredRuleInputsSupported(version)
+			if want != got {
+				t.Fatalf("Incorrect isConfiguredRuleInputsSupported: want %v got %v", want, got)
+			}
+		})
+	}
 }
