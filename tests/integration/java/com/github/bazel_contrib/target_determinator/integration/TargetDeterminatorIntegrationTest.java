@@ -65,6 +65,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
     super.tryImportInBazelrcAffectingJava();
   }
 
+  // TODO: Stop ignoring this test when our tests use Bazel 7.0.0
   @Override
   public void addingTargetUsedInHostConfiguration() throws Exception {
     allowOverBuilds(
@@ -108,6 +109,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
     }
   }
 
+  // TODO: Stop ignoring this test when our tests use Bazel 7.0.0
   @Override
   public void ignoredPlatformSpecificDepChanged() throws Exception {
     allowOverBuilds("Platform-specific narrowing is disabled due to https://github.com/bazelbuild/bazel/issues/17916");
