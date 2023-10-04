@@ -107,8 +107,8 @@ func RegisterCommonFlags() *CommonFlags {
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
 	flag.StringVar(commonFlags.BazelPath, "bazel", "bazel",
 		"Bazel binary (basename on $PATH, or absolute or relative path) to run.")
-	flag.Var(commonFlags.BazelStartupOpts, "bazel-startup-opts", "Startup options to pass to Bazel.")
-	flag.Var(commonFlags.BazelOpts, "bazel-opts", "Options to pass to Bazel. Assumed to apply to build and cquery.")
+	flag.Var(commonFlags.BazelStartupOpts, "bazel-startup-opts", "Startup options to pass to Bazel. Options such as '--bazelrc' should use relative paths for files under the repository to avoid issues (TD may check out the repository in a temporary directory).")
+	flag.Var(commonFlags.BazelOpts, "bazel-opts", "Options to pass to Bazel. Assumed to apply to build and cquery. Options should use relative paths for repository files (see --bazel-startup-opts).")
 	flag.Var(&commonFlags.EnforceCleanRepo, "enforce-clean",
 		fmt.Sprintf("Pass --enforce-clean=%v to fail if the repository is unclean, or --enforce-clean=%v to allow ignored untracked files (the default).",
 			EnforceClean.String(), AllowIgnored.String()))
