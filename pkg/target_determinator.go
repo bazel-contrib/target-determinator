@@ -169,7 +169,7 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 	defer func() {
 		innerErr := gitCheckout(context.WorkspacePath, context.OriginalRevision)
 		if innerErr != nil && err == nil {
-			err = fmt.Errorf("failed to check out original commit during cleanup: %v", err)
+			err = fmt.Errorf("failed to check out original commit during cleanup: %v", innerErr)
 		}
 	}()
 	queryInfo, loadMetadataCleanup, err := LoadIncompleteMetadata(context, rev, targets)
