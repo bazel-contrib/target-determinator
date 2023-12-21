@@ -61,6 +61,16 @@ type WalkCallback func(label.Label, []Difference, *analysis.ConfiguredTarget)
 
 This can be used to flexibly build your own logic handling the affected targets to drive whatever analysis you want.
 
+## How to get Target Determinator
+
+Pre-built binary releases are published as [GitHub Releases](https://github.com/bazel-contrib/target-determinator/releases) for most changes.
+
+We recommend you download the latest release for your platform, and run it where needed (e.g. in your CI pipeline).
+
+We avoid breaking changes where possible, but offer no formal compatibility guarantees release-to-release.
+
+We do not recommend integrating Target Determinator into your Bazel build graph unless you have a compelling reason to do so.
+
 ## Contributing
 
 Contributions are very welcome!
