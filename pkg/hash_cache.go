@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	ss "github.com/bazel-contrib/target-determinator/common/sorted_set"
+	"github.com/bazel-contrib/target-determinator/common/versions"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	gazelle_label "github.com/bazelbuild/bazel-gazelle/label"
@@ -40,18 +41,12 @@ func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analy
 }
 
 func isConfiguredRuleInputsSupported(releaseString string) bool {
-	releasePrefix := "release "
-	explanation := " - assuming cquery does not support configured rule inputs (which is supported from bazel 7), which may lead to over-estimates of affected targets"
-	if !strings.HasPrefix(releaseString, releasePrefix) {
-		log.Printf("Bazel wasn't a released version%s", explanation)
-		return false
+	isSupportedVersion, explanation := versions.ReleaseIsInRange(releaseString, version.Must(version.NewVersion("7.0.0-pre.20230628.2")), nil)
+	if isSupportedVersion != nil {
+		return *isSupportedVersion
 	}
-	v, err := version.NewVersion(releaseString[len(releasePrefix):])
-	if err != nil {
-		log.Printf("Failed to parse Bazel version %q: %s", releaseString, explanation)
-		return false
-	}
-	return v.GreaterThanOrEqual(version.Must(version.NewVersion("7.0.0-pre.20230628.2")))
+	log.Printf("%s - assuming cquery does not support configured rule inputs (which is supported from bazel 7), which may lead to over-estimates of affected targets", explanation)
+	return false
 }
 
 // TargetHashCache caches hash computations for targets and files, so that transitive hashes can be
