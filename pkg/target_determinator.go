@@ -14,6 +14,7 @@ import (
 	path2 "path"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,9 +22,11 @@ import (
 	"github.com/aristanetworks/goarista/path"
 	"github.com/bazel-contrib/target-determinator/common"
 	ss "github.com/bazel-contrib/target-determinator/common/sorted_set"
+	"github.com/bazel-contrib/target-determinator/common/versions"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	"github.com/bazelbuild/bazel-gazelle/label"
+	"github.com/hashicorp/go-version"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -648,7 +651,25 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to resolve the bazel release: %w", err)
 	}
 
+	// Work around https://github.com/bazelbuild/bazel/issues/21010
+	var incompatibleTargetsToFilter map[label.Label]bool
+	hasIncompatibleTargetsBug, explanation := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("7.0.0-pre.20230628.2")), nil)
+	if hasIncompatibleTargetsBug != nil && *hasIncompatibleTargetsBug {
+		if !context.FilterIncompatibleTargets {
+			return nil, fmt.Errorf("requested not to filter incompatible targets, but bazel version %s has a bug requiring filtering incompatible targets - see https://github.com/bazelbuild/bazel/issues/21010", bazelRelease)
+		}
+		incompatibleTargetsToFilter, err = findCompatibleTargets(context, targets.String(), false)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find incompatible targets: %w", err)
+		}
+	} else if hasIncompatibleTargetsBug == nil {
+		log.Printf("Couldn't detect whether current bazel version (%s) suffers from https://github.com/bazelbuild/bazel/issues/21010: %s - assuming it does not", bazelRelease, explanation)
+	}
+
 	depsPattern := fmt.Sprintf("deps(%s)", targets.String())
+	if len(incompatibleTargetsToFilter) > 0 {
+		depsPattern += " - " + strings.Join(sortedStringKeys(incompatibleTargetsToFilter), " - ")
+	}
 	transitiveResult, err := runToCqueryResult(context, depsPattern, true)
 	if err != nil {
 		retErr := fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
@@ -676,7 +697,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 
 	var compatibleTargets map[label.Label]bool
 	if context.FilterIncompatibleTargets {
-		if compatibleTargets, err = findCompatibleTargets(context, targets.String()); err != nil {
+		if compatibleTargets, err = findCompatibleTargets(context, targets.String(), true); err != nil {
 			return nil, fmt.Errorf("failed to find compatible targets: %w", err)
 		}
 	}
@@ -724,6 +745,15 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	return queryResults, nil
 }
 
+func sortedStringKeys[V any](m map[label.Label]V) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key.String())
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func runToCqueryResult(context *Context, pattern string, includeTransitions bool) (*analysis.CqueryResult, error) {
 	log.Printf("Running cquery on %s", pattern)
 	var stdout bytes.Buffer
@@ -752,12 +782,16 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 	return &result, nil
 }
 
-func findCompatibleTargets(context *Context, pattern string) (map[label.Label]bool, error) {
+func findCompatibleTargets(context *Context, pattern string, compatibility bool) (map[label.Label]bool, error) {
 	log.Printf("Finding compatible targets under %s", pattern)
 	compatibleTargets := make(map[label.Label]bool)
 
 	// Add the `or []` to work around https://github.com/bazelbuild/bazel/issues/17749 which was fixed in 6.2.0.
-	queryFilter := ` if "IncompatiblePlatformProvider" not in (providers(target) or []) else ""`
+	negation := ""
+	if compatibility {
+		negation = "not "
+	}
+	queryFilter := fmt.Sprintf(` if "IncompatiblePlatformProvider" %sin (providers(target) or []) else ""`, negation)
 
 	// Separate alias and non-alias targets to work around https://github.com/bazelbuild/bazel/issues/18421
 	{
