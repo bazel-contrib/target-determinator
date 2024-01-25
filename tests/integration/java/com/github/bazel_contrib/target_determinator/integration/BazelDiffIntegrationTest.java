@@ -162,4 +162,8 @@ public class BazelDiffIntegrationTest extends Tests {
   @Override
   @Ignore("bazel-diff does not filter incompatible targets")
   public void incompatibleTargetsAreFiltered() throws Exception {}
+
+  @Override
+  @Ignore("bazel-diff does not filter incompatible targets")
+  public void incompatibleTargetsAreFiltered_bazelIssue21010() throws Exception {}
 }

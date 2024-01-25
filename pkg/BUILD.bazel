@@ -15,6 +15,7 @@ go_library(
     deps = [
         "//common",
         "//common/sorted_set",
+        "//common/versions",
         "//third_party/protobuf/bazel/analysis",
         "//third_party/protobuf/bazel/build",
         "@com_github_aristanetworks_goarista//path",

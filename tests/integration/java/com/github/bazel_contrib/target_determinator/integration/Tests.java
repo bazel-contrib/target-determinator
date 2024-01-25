@@ -491,6 +491,13 @@ public abstract class Tests {
   }
 
   @Test
+  public void incompatibleTargetsAreFiltered_bazelIssue21010() throws Exception {
+    doTest(Commits.ONE_TEST_BAZEL7_0_0, Commits.INCOMPATIBLE_TARGET_BAZEL7_0_0,
+        Set.of("//java/example:CompatibleTest"),
+        Set.of("//java/example:IncompatibleTest"));
+  }
+
+  @Test
   public void platformSpecificSrcChanged() throws Exception {
     String after = Commits.CHANGED_NONLINUX_SRC;
     if (isLinux()) {
@@ -601,6 +608,7 @@ class Commits {
 
   public static final String NO_TARGETS = "d2862de5e63c8be0866056e6307049c159fb9e47";
   public static final String ONE_TEST = "65dfed228e75a7f4ad361fe65512a1e58ef83b1c";
+  public static final String ONE_TEST_BAZEL7_0_0 = "30dfd560934f45b8af30601f9d4efe1d5726de5c";
   public static final String TWO_TESTS = "bd1f7781e0d5ee66f3235a1adb8f656d5ea35c2d";
   public static final String HAS_JVM_FLAGS = "50609b7d1260b449ceed57718165981986880d97";
   public static final String EXPLICIT_DEFAULT_VALUE = "34213eb339cbb5d1544c83c1aa8c19528c147e0d";
@@ -682,7 +690,7 @@ class Commits {
       "6452291f3dcea1a5cdb332463308b70325a833e0"; // (v1/sh-test-non-executable) make shell file non-executable
   public static final String INCOMPATIBLE_TARGET =
       "69b4567d904cad46a584901c82c2959be89ae458";
-
+  public static final String INCOMPATIBLE_TARGET_BAZEL7_0_0 = "d2dbc66ed32cb0e95009d2a5d4ce76f3374ddb7d";
   public static final String SELECT_TARGET = "7562088a92cdb20cccb99b996c1c147b0773e60a";
 
   public static final String CHANGED_NONLINUX_SRC = "28310014a760aae84e96254e04337a99bf6b39ea";
