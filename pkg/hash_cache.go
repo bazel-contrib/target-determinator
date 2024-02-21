@@ -95,7 +95,7 @@ func (thc *TargetHashCache) Hash(labelAndConfiguration LabelAndConfiguration) ([
 	if !ok {
 		if thc.frozen {
 			thc.cacheLock.Unlock()
-			return nil, notComputedBeforeFrozen
+			return nil, fmt.Errorf("didn't have cache entry for label %s: %w", labelAndConfiguration.Label, notComputedBeforeFrozen)
 		}
 		thc.cache[labelAndConfiguration.Label] = make(map[Configuration]*cacheEntry)
 	}
@@ -110,7 +110,7 @@ func (thc *TargetHashCache) Hash(labelAndConfiguration LabelAndConfiguration) ([
 	defer entry.hashLock.Unlock()
 	if entry.hash == nil {
 		if thc.frozen {
-			return nil, notComputedBeforeFrozen
+			return nil, fmt.Errorf("didn't have cache value for label %s in configuration %s: %w", labelAndConfiguration.Label, labelAndConfiguration.Configuration, notComputedBeforeFrozen)
 		}
 		hash, err := hashTarget(thc, labelAndConfiguration)
 		if err != nil {
@@ -294,17 +294,21 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 		}
 	}
 
-	ruleInputLabelsBefore, labelsToKnownConfigurationsBefore, err := indexRuleInputs(before, ruleBefore)
+	ruleInputLabelsAndConfigurationsBefore, err := getConfiguredRuleInputs(before, ruleBefore, labelAndConfiguration.Configuration)
 	if err != nil {
 		return nil, err
 	}
-	ruleInputLabelsAfter, labelsToKnownConfigurationsAfter, err := indexRuleInputs(after, ruleAfter)
-	if err != nil {
-		return nil, err
-	}
+	ruleInputLabelsToConfigurationsBefore := indexByLabel(ruleInputLabelsAndConfigurationsBefore)
 
-	for _, ruleInputLabel := range ruleInputLabelsAfter.SortedSlice() {
-		if !ruleInputLabelsBefore.Contains(ruleInputLabel) {
+	ruleInputLabelsAndConfigurationsAfter, err := getConfiguredRuleInputs(after, ruleAfter, labelAndConfiguration.Configuration)
+	if err != nil {
+		return nil, err
+	}
+	ruleInputLabelsToConfigurationsAfter := indexByLabel(ruleInputLabelsAndConfigurationsAfter)
+
+	for _, ruleInputLabelAndConfigurations := range ruleInputLabelsAndConfigurationsAfter {
+		ruleInputLabel := ruleInputLabelAndConfigurations.Label
+		if _, ok := ruleInputLabelsToConfigurationsBefore[ruleInputLabel]; !ok {
 			differences = append(differences, Difference{
 				Category: "RuleInputAdded",
 				Key:      ruleInputLabel.String(),
@@ -314,8 +318,8 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 			// query information, so we could filter away e.g. host changes when we only have a target dep.
 			// Unfortunately, Bazel doesn't currently expose this.
 			// See https://github.com/bazelbuild/bazel/issues/14610#issuecomment-1024460141
-			knownConfigurationsBefore := labelsToKnownConfigurationsBefore[ruleInputLabel]
-			knownConfigurationsAfter := labelsToKnownConfigurationsAfter[ruleInputLabel]
+			knownConfigurationsBefore := ruleInputLabelsToConfigurationsBefore[ruleInputLabel]
+			knownConfigurationsAfter := ruleInputLabelsToConfigurationsAfter[ruleInputLabel]
 
 			for _, knownConfigurationAfter := range knownConfigurationsAfter.SortedSlice() {
 				if knownConfigurationsBefore.Contains(knownConfigurationAfter) {
@@ -352,8 +356,9 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 			}
 		}
 	}
-	for _, ruleInputLabel := range ruleInputLabelsBefore.SortedSlice() {
-		if !ruleInputLabelsAfter.Contains(ruleInputLabel) {
+	for _, ruleInputLabelAndConfigurations := range ruleInputLabelsAndConfigurationsBefore {
+		ruleInputLabel := ruleInputLabelAndConfigurations.Label
+		if _, ok := ruleInputLabelsToConfigurationsAfter[ruleInputLabel]; !ok {
 			differences = append(differences, Difference{
 				Category: "RuleInputRemoved",
 				Key:      ruleInputLabel.String(),
@@ -364,32 +369,12 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 	return differences, nil
 }
 
-func indexRuleInputs(index *TargetHashCache, rule *build.Rule) (*ss.SortedSet[gazelle_label.Label], map[gazelle_label.Label]*ss.SortedSet[Configuration], error) {
-	ruleInputs := ss.NewSortedSetFn([]gazelle_label.Label{}, CompareLabels)
-	labelsToConfigurations := make(map[gazelle_label.Label]*ss.SortedSet[Configuration])
-	if index.bazelVersionSupportsConfiguredRuleInputs {
-		for _, configuredRuleInput := range rule.GetConfiguredRuleInput() {
-			ruleInputLabel, err := ParseCanonicalLabel(configuredRuleInput.GetLabel())
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to parse configuredRuleInput label %s: %w", configuredRuleInput.GetLabel(), err)
-			}
-			ruleInputs.Add(ruleInputLabel)
-			if _, ok := labelsToConfigurations[ruleInputLabel]; !ok {
-				labelsToConfigurations[ruleInputLabel] = ss.NewSortedSetFn([]Configuration{}, ConfigurationLess)
-			}
-			labelsToConfigurations[ruleInputLabel].Add(NormalizeConfiguration(configuredRuleInput.GetConfigurationChecksum()))
-		}
-	} else {
-		for _, ruleInputString := range rule.GetRuleInput() {
-			ruleInputLabel, err := ParseCanonicalLabel(ruleInputString)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputString, err)
-			}
-			ruleInputs.Add(ruleInputLabel)
-			labelsToConfigurations[ruleInputLabel] = index.KnownConfigurations(ruleInputLabel)
-		}
+func indexByLabel(labelsAndConfigurations []LabelAndConfigurations) map[gazelle_label.Label]*ss.SortedSet[Configuration] {
+	m := make(map[gazelle_label.Label]*ss.SortedSet[Configuration], len(labelsAndConfigurations))
+	for _, labelAndConfigurations := range labelsAndConfigurations {
+		m[labelAndConfigurations.Label] = ss.NewSortedSetFn(labelAndConfigurations.Configurations, ConfigurationLess)
 	}
-	return ruleInputs, labelsToConfigurations, nil
+	return m
 }
 
 func formatLabelWithConfiguration(label gazelle_label.Label, configuration Configuration) string {
@@ -502,6 +487,29 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 	ownConfiguration := NormalizeConfiguration(configuration.GetChecksum())
 
 	// Hash rule inputs
+	labelsAndConfigurations, err := getConfiguredRuleInputs(thc, rule, ownConfiguration)
+	if err != nil {
+		return nil, err
+	}
+	for _, ruleInputLabelAndConfigurations := range labelsAndConfigurations {
+		for _, ruleInputConfiguration := range ruleInputLabelAndConfigurations.Configurations {
+			ruleInputLabel := ruleInputLabelAndConfigurations.Label
+			ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: ruleInputConfiguration})
+			if err != nil {
+				return nil, fmt.Errorf("failed to hash configuredRuleInput %s %s which is a dependency of %s %s: %w", ruleInputLabel, ruleInputConfiguration, rule.GetName(), configuration.GetChecksum(), err)
+			}
+
+			writeLabel(hasher, ruleInputLabel)
+			hasher.Write(ruleInputConfiguration.ForHashing())
+			hasher.Write(ruleInputHash)
+		}
+	}
+
+	return hasher.Sum(nil), nil
+}
+
+func getConfiguredRuleInputs(thc *TargetHashCache, rule *build.Rule, ownConfiguration Configuration) ([]LabelAndConfigurations, error) {
+	labelsAndConfigurations := make([]LabelAndConfigurations, 0)
 	if thc.bazelVersionSupportsConfiguredRuleInputs {
 		for _, configuredRuleInput := range rule.ConfiguredRuleInput {
 			ruleInputLabel, err := ParseCanonicalLabel(configuredRuleInput.GetLabel())
@@ -519,19 +527,19 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 					return nil, fmt.Errorf("configuredRuleInputs for %s included %s in configuration %s but it couldn't be found either unconfigured or in the depending target's configuration %s. This probably indicates a bug in Bazel - please report it with a git repo that reproduces at https://github.com/bazel-contrib/target-determinator/issues so we can investigate", rule.GetName(), ruleInputLabel, ruleInputConfiguration, ownConfiguration)
 				}
 			}
-			ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: ruleInputConfiguration})
-			if err != nil {
-				return nil, fmt.Errorf("failed to hash configuredRuleInput %s %s which is a dependency of %s %s: %w", ruleInputLabel, ruleInputConfiguration, rule.GetName(), configuration.GetChecksum(), err)
-			}
-			writeLabel(hasher, ruleInputLabel)
-			hasher.Write(ruleInputConfiguration.ForHashing())
-			hasher.Write(ruleInputHash)
+			labelsAndConfigurations = append(labelsAndConfigurations, LabelAndConfigurations{
+				Label:          ruleInputLabel,
+				Configurations: []Configuration{ruleInputConfiguration},
+			})
 		}
 	} else {
 		for _, ruleInputLabelString := range rule.RuleInput {
 			ruleInputLabel, err := ParseCanonicalLabel(ruleInputLabelString)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputLabelString, err)
+			}
+			labelAndConfigurations := LabelAndConfigurations{
+				Label: ruleInputLabel,
 			}
 			var depConfigurations []Configuration
 			// Aliases don't transition, and we've seen aliases expanding across configurations cause dependency cycles for nogo targets.
@@ -550,14 +558,13 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 					depConfigurations = []Configuration{NormalizeConfiguration("")}
 				} else {
 					// If it's not a source file, narrow just to the current configuration - we know there was no transition, so we must be in the same configuration.
-					depConfigurations = []Configuration{NormalizeConfiguration(configuration.GetChecksum())}
+					depConfigurations = []Configuration{ownConfiguration}
 				}
 			} else {
 				depConfigurations = thc.KnownConfigurations(ruleInputLabel).SortedSlice()
 			}
 			for _, configuration := range depConfigurations {
-				ruleInputHash, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: configuration})
-				if err != nil {
+				if _, err := thc.Hash(LabelAndConfiguration{Label: ruleInputLabel, Configuration: configuration}); err != nil {
 					if errors.Is(err, labelNotFound) {
 						// Two issues (so far) have been found which lead to targets being listed in
 						// ruleInputs but not in the output of a deps query:
@@ -574,14 +581,12 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 					}
 					return nil, err
 				}
-				writeLabel(hasher, ruleInputLabel)
-				hasher.Write(configuration.ForHashing())
-				hasher.Write(ruleInputHash)
+				labelAndConfigurations.Configurations = append(labelAndConfigurations.Configurations, configuration)
 			}
+			labelsAndConfigurations = append(labelsAndConfigurations, labelAndConfigurations)
 		}
 	}
-
-	return hasher.Sum(nil), nil
+	return labelsAndConfigurations, nil
 }
 
 type fileHashCache struct {
