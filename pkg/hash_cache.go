@@ -614,13 +614,16 @@ func (hc *fileHashCache) Hash(path string) ([]byte, error) {
 		defer file.Close()
 		hasher := sha256.New()
 
-		// Hash the file mode.
-		// This is used to detect change such as file exec bit changing.
+		// Hash the file's u+x bit.
+		// Git doesn't track any of the other file permissions.
+		// If you chmod a file in your working tree in any other bit, and then run in worktree mode
+		// (because you have local untracked changes), the other permission bits may not match,
+		// and we want to ignore this.
 		info, err := file.Stat()
 		if err != nil {
 			return nil, err
 		}
-		if _, err := fmt.Fprintf(hasher, info.Mode().String()); err != nil {
+		if _, err := fmt.Fprintf(hasher, (info.Mode() & 0100).String()); err != nil {
 			return nil, err
 		}
 

@@ -2,8 +2,11 @@ package com.github.bazel_contrib.target_determinator.integration;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
 import org.hamcrest.CoreMatchers;
+import org.junit.Test;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Set;
 
 import static junit.framework.TestCase.fail;
@@ -114,5 +117,27 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   public void ignoredPlatformSpecificDepChanged() throws Exception {
     allowOverBuilds("Platform-specific narrowing is disabled due to https://github.com/bazelbuild/bazel/issues/17916");
     super.ignoredPlatformSpecificDepChanged();
+  }
+
+  // We have previously seen a bug here when a worktree needed to be created incorrect permissions in the working tree would differ from the worktree (which clones things with the "correct" permissions).
+  // It turns out git doesn't actually track permissions other than u+x, so we shouldn't be diffing more than that.
+  @Test
+  public void testWrongGroupWritablePermissionsWhenUsingWorktree() throws Exception {
+    // Create an unignored file to force use of a worktree.
+    Path temporaryFileToForceWorktree = testDir.resolve("unadded-but-not-ignored-file-to-force-worktree-use");
+    Files.createFile(temporaryFileToForceWorktree);
+    try {
+      gitCheckout(Commits.ONE_SH_TEST);
+
+      Files.setPosixFilePermissions(testDir.resolve("sh").resolve("sh_test.sh"), PosixFilePermissions.fromString("rwxrwxr-x"));
+
+      Set<Label> targets = getTargets(Commits.ONE_SH_TEST, Commits.ONE_SH_TEST);
+      Util.assertTargetsMatch(
+              targets, Set.of(), Set.of("//sh:sh_test"), isAllowOverBuilds());
+
+    } finally {
+      Files.setPosixFilePermissions(testDir.resolve("sh").resolve("sh_test.sh"), PosixFilePermissions.fromString("rwxr-xr-x"));
+      Files.deleteIfExists(temporaryFileToForceWorktree);
+    }
   }
 }
