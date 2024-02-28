@@ -53,13 +53,17 @@ public abstract class Tests {
 
   @Rule public TestName name = new TestName();
 
-  private Set<Label> getTargets(String commitBefore, String commitAfter)
+  protected Set<Label> getTargets(String commitBefore, String commitAfter)
       throws TargetComputationErrorException {
     return getTargets(testDir, commitBefore, commitAfter);
   }
 
   protected void allowOverBuilds(String reason) {
     this.allowOverBuilds = true;
+  }
+
+  protected boolean isAllowOverBuilds() {
+    return allowOverBuilds;
   }
 
   protected boolean supportsIgnoredUnaddedFiles() {
@@ -591,7 +595,7 @@ public abstract class Tests {
     TestdataRepo.gitCheckoutBranch(testDir, branch);
   }
 
-  private void gitCheckout(final String commit) throws Exception {
+  protected void gitCheckout(final String commit) throws Exception {
     TestdataRepo.gitCheckout(testDir, commit);
   }
 
