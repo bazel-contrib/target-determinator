@@ -137,6 +137,7 @@ public class TargetDeterminatorSpecificFlagsTest {
       fail("Expected target-determinator command to fail but it succeeded");
     } catch (TargetComputationErrorException e) {
       assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStderr(), containsString("post-checkout repository is not clean"));
     }
   }
 
