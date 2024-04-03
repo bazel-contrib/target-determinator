@@ -135,6 +135,8 @@ type Context struct {
 	CompareQueriesAroundAnalysisCacheClear bool
 	// FilterIncompatibleTargets controls whether we filter out incompatible targets from the candidate set of affected targets.
 	FilterIncompatibleTargets bool
+	// EnforceCleanRepo controls whether we should fail if the repository is unclean.
+	EnforceCleanRepo bool
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
@@ -212,6 +214,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 		AnalysisCacheClearStrategy:             context.AnalysisCacheClearStrategy,
 		CompareQueriesAroundAnalysisCacheClear: context.CompareQueriesAroundAnalysisCacheClear,
 		FilterIncompatibleTargets:              context.FilterIncompatibleTargets,
+		EnforceCleanRepo:                       context.EnforceCleanRepo,
 	}
 	cleanupFunc := func() {}
 
@@ -374,6 +377,10 @@ func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common
 		return "", fmt.Errorf("failed to check whether the repository is clean: %w", err)
 	}
 	if !isPreCheckoutClean {
+		if context.EnforceCleanRepo {
+			return "", fmt.Errorf("pre-checkout repository is not clean")
+		}
+
 		log.Printf("Workspace is unclean, using git worktree. This will be slower the first time. " +
 			"You can avoid this by committing local changes and ignoring untracked files.")
 		useGitWorktree = true
@@ -387,6 +394,10 @@ func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common
 			return "", fmt.Errorf("failed to check whether the repository is clean: %w", err)
 		}
 		if !isPostCheckoutClean {
+			if context.EnforceCleanRepo {
+				return "", fmt.Errorf("post-checkout repository is not clean")
+			}
+
 			log.Printf("Detected unclean repository after checkout (likely due to submodule or " +
 				".gitignore changes). Using git worktree to leave original repository pristine.")
 			useGitWorktree = true
