@@ -378,7 +378,7 @@ func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common
 	}
 	if !isPreCheckoutClean {
 		if context.EnforceCleanRepo {
-			return "", fmt.Errorf("pre-checkout repository is not clean")
+			return "", fmt.Errorf("repository was not clean before checking out %v", rev)
 		}
 
 		log.Printf("Workspace is unclean, using git worktree. This will be slower the first time. " +
@@ -395,7 +395,7 @@ func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common
 		}
 		if !isPostCheckoutClean {
 			if context.EnforceCleanRepo {
-				return "", fmt.Errorf("post-checkout repository is not clean")
+				return "", fmt.Errorf("repository was not clean after checking out %v", rev)
 			}
 
 			log.Printf("Detected unclean repository after checkout (likely due to submodule or " +
