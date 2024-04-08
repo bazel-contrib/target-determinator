@@ -186,7 +186,7 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 		AnalysisCacheClearStrategy:             *commonFlags.AnalysisCacheClearStrategy,
 		CompareQueriesAroundAnalysisCacheClear: commonFlags.CompareQueriesAroundAnalysisCacheClear,
 		FilterIncompatibleTargets:              commonFlags.FilterIncompatibleTargets,
-		EnforceCleanRepo: 					 	commonFlags.EnforceCleanRepo == EnforceClean,
+		EnforceCleanRepo:                       commonFlags.EnforceCleanRepo == EnforceClean,
 	}
 
 	// Non-context attributes
