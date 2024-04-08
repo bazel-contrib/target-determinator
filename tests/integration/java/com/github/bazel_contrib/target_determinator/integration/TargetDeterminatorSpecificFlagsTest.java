@@ -126,16 +126,32 @@ public class TargetDeterminatorSpecificFlagsTest {
   }
 
   @Test
-  public void succeedForUncleanIgnoredFilesWithEnforceClean() throws Exception {
+  public void ignoresIgnoredFile() throws Exception {
     TestdataRepo.gitCheckout(testDir, Commits.TWO_TESTS_WITH_GITIGNORE);
 
     Path ignoredFile = testDir.resolve("ignored-file");
     Files.createFile(ignoredFile);
 
-    Set<Label> targets = getTargets(Commits.ONE_TEST, "//...", true, true);
+    Set<Label> targets = getTargets(Commits.ONE_TEST_WITH_GITIGNORE, "//...", true, true);
     Util.assertTargetsMatch(targets, Set.of("//java/example:OtherExampleTest"), Set.of(), false);
 
     assertThat("expected ignored file to still be present after invocation", ignoredFile.toFile().exists());
+  }
+
+  @Test
+  public void failsIfChangingCommitsCausesAnIgnoredFileToBecomeUntracked() throws Exception {
+    TestdataRepo.gitCheckout(testDir, Commits.TWO_TESTS_WITH_GITIGNORE);
+
+    Path ignoredFile = testDir.resolve("ignored-file");
+    Files.createFile(ignoredFile);
+
+    try {
+      getTargets(Commits.ONE_TEST, "//...", true, true);
+      fail("Expected target-determinator command to fail but it succeeded");
+    } catch (TargetComputationErrorException e) {
+      assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStderr(), containsString("repository was not clean after checking out revision 'before'"));
+    }
   }
 
   @Test

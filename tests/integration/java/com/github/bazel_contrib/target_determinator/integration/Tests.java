@@ -673,6 +673,7 @@ class Commits {
       "c0ef0f9805e65817299eb7a794ed66655c0dd5aa";
   public static final String REDUCE_DEPENDENCY_VISIBILITY =
       "396dae111684b893ec6e04b2f6e86ed603a01082";
+  public static final String ONE_TEST_WITH_GITIGNORE = "51bf9b729dddf35694019c19b5dbffb36bf83af4";
   public static final String TWO_TESTS_WITH_GITIGNORE = "55845a3a08525f2aa66c3d7a2115dad684c46995";
   public static final String SUBMODULE_ADD_TRIVIAL_SUBMODULE =
       "b88ddcfe3da63c8308ce6d3274dd424d2c7b211a";
