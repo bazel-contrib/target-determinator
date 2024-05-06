@@ -10,13 +10,6 @@ bazel run @go_sdk//:bin/go -- mod tidy
 echo -e 'def go_dependencies():\n    pass\n' >third_party/go/deps.bzl
 bazel run //:gazelle -- update-repos -from_file=go.mod -prune -to_macro "third_party/go/deps.bzl%go_dependencies"
 
-# Work around https://github.com/bazelbuild/bazel-gazelle/issues/1344
-sed_i=(sed -i)
-if [[ "$(uname)" == "Darwin" ]]; then
-  sed_i+=("")
-fi
-"${sed_i[@]}" 's#load("@bazel_gazelle//:deps\.bzl", "go_repository")#load("//:third_party/go/go_repository.bzl", "go_repository")#' third_party/go/deps.bzl
-
 mv "${SCRIPT_DIR}"/../third_party/go/bazel_differ_deps.bzl.bak "${SCRIPT_DIR}"/../third_party/go/bazel_differ_deps.bzl
 
 "${SCRIPT_DIR}"/format
