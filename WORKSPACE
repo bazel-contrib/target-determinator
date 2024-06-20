@@ -42,15 +42,15 @@ http_archive(
     url = "https://github.com/Tinder/bazel-diff/archive/refs/tags/3.5.0.tar.gz",
 )
 
-RULES_JVM_EXTERNAL_TAG = "4.2"
+RULES_JVM_EXTERNAL_TAG = "6.1"
 
-RULES_JVM_EXTERNAL_SHA = "2cd77de091e5376afaf9cc391c15f093ebd0105192373b334f0a855d89092ad5"
+RULES_JVM_EXTERNAL_SHA = "08ea921df02ffe9924123b0686dc04fd0ff875710bfadb7ad42badb931b0fd50"
 
 http_archive(
     name = "rules_jvm_external",
     sha256 = RULES_JVM_EXTERNAL_SHA,
     strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
-    url = "https://github.com/bazelbuild/rules_jvm_external/archive/refs/tags/%s.tar.gz" % RULES_JVM_EXTERNAL_TAG,
+    url = "https://github.com/bazelbuild/rules_jvm_external/releases/download/%s/rules_jvm_external-%s.tar.gz" % (RULES_JVM_EXTERNAL_TAG, RULES_JVM_EXTERNAL_TAG),
 )
 
 load("@rules_jvm_external//:repositories.bzl", "rules_jvm_external_deps")
