@@ -28,6 +28,8 @@ type driverFlags struct {
 	targetPatternFile string
 	revisionBefore    string
 	manualTestMode    string
+	// Expected option: "build"
+	bazelCommandOverride string
 }
 
 type config struct {
@@ -37,6 +39,8 @@ type config struct {
 	// One of "run" or "skip".
 	ManualTestMode    string
 	TargetPatternFile string
+	// Expected option: "build"
+	bazelCommandOverride string
 }
 
 func main() {
@@ -71,9 +75,10 @@ func main() {
 		targets = append(targets, label)
 		targetsSet[label] = struct{}{}
 		// This is not an ideal heuristic, ideally cquery would expose to us whether a target is a test target.
-		if strings.HasSuffix(configuredTarget.GetTarget().GetRule().GetRuleClass(), "_test") {
+		if strings.HasSuffix(configuredTarget.GetTarget().GetRule().GetRuleClass(), "_test") && flags.bazelCommandOverride != "build" {
 			commandVerb = "test"
 		}
+
 	}
 
 	if err := pkg.WalkAffectedTargets(config.Context,
@@ -146,7 +151,7 @@ func parseFlags() (*driverFlags, error) {
 	flags.commonFlags = cli.RegisterCommonFlags()
 	flag.StringVar(&flags.manualTestMode, "manual-test-mode", "skip", "How to handle affected tests tagged manual. Possible values: run|skip")
 	flag.StringVar(&flags.targetPatternFile, "target-pattern-file", "", "If defined, stores the list of affected targets in the given file.")
-
+	flag.StringVar(&flags.bazelCommandOverride, "bazel-command-override", "auto", "Overrides the bazel command which runs build/test based on target type to run only build. Options: build, default behaviour will selected build/test based on target type")
 	flag.Parse()
 
 	if flags.manualTestMode != "run" && flags.manualTestMode != "skip" {
@@ -169,10 +174,11 @@ func resolveConfig(flags driverFlags) (*config, error) {
 	}
 
 	return &config{
-		Context:           commonArgs.Context,
-		RevisionBefore:    commonArgs.RevisionBefore,
-		Targets:           commonArgs.Targets,
-		ManualTestMode:    flags.manualTestMode,
-		TargetPatternFile: flags.targetPatternFile,
+		Context:              commonArgs.Context,
+		RevisionBefore:       commonArgs.RevisionBefore,
+		Targets:              commonArgs.Targets,
+		ManualTestMode:       flags.manualTestMode,
+		TargetPatternFile:    flags.targetPatternFile,
+		bazelCommandOverride: flags.bazelCommandOverride,
 	}, nil
 }
