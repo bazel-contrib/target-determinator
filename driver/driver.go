@@ -151,8 +151,7 @@ func parseFlags() (*driverFlags, error) {
 	flags.commonFlags = cli.RegisterCommonFlags()
 	flag.StringVar(&flags.manualTestMode, "manual-test-mode", "skip", "How to handle affected tests tagged manual. Possible values: run|skip")
 	flag.StringVar(&flags.targetPatternFile, "target-pattern-file", "", "If defined, stores the list of affected targets in the given file.")
-	flag.StringVar(&flags.bazelSubCommandOverride, "bazel-command-override", "auto", "Overrides the bazel command which runs build/test based on target type to run only build. Options: build, default behaviour will selected build/test based on target type")
-	flag.StringVar(&flags.bazelSubCommandOverride, "bazel-command-override", "auto", "Bazel subcommand used to build or test targets. Possible values: auto|build; by default, \"auto\" selects \"build\" or \"test\" based on the target's rule")
+	flag.StringVar(&flags.bazelSubCommandOverride, "bazel-sub-command-override", "auto", "Bazel subcommand used to build or test targets. Possible values: auto|build; by default, \"auto\" selects \"build\" or \"test\" based on the target's rule")
 	flag.Parse()
 
 	if flags.manualTestMode != "run" && flags.manualTestMode != "skip" {
