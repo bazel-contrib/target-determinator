@@ -28,8 +28,8 @@ type driverFlags struct {
 	targetPatternFile string
 	revisionBefore    string
 	manualTestMode    string
-	// Expected option: "build"
-	bazelCommandOverride string
+	// Expected value: "build"
+	bazelSubCommandOverride string
 }
 
 type config struct {
@@ -39,8 +39,8 @@ type config struct {
 	// One of "run" or "skip".
 	ManualTestMode    string
 	TargetPatternFile string
-	// Expected option: "build"
-	bazelCommandOverride string
+	// Expected value: "build"
+	bazelSubCommandOverride string
 }
 
 func main() {
@@ -75,7 +75,7 @@ func main() {
 		targets = append(targets, label)
 		targetsSet[label] = struct{}{}
 		// This is not an ideal heuristic, ideally cquery would expose to us whether a target is a test target.
-		if strings.HasSuffix(configuredTarget.GetTarget().GetRule().GetRuleClass(), "_test") && flags.bazelCommandOverride != "build" {
+		if strings.HasSuffix(configuredTarget.GetTarget().GetRule().GetRuleClass(), "_test") && flags.bazelSubCommandOverride != "build" {
 			commandVerb = "test"
 		}
 
@@ -151,7 +151,8 @@ func parseFlags() (*driverFlags, error) {
 	flags.commonFlags = cli.RegisterCommonFlags()
 	flag.StringVar(&flags.manualTestMode, "manual-test-mode", "skip", "How to handle affected tests tagged manual. Possible values: run|skip")
 	flag.StringVar(&flags.targetPatternFile, "target-pattern-file", "", "If defined, stores the list of affected targets in the given file.")
-	flag.StringVar(&flags.bazelCommandOverride, "bazel-command-override", "auto", "Overrides the bazel command which runs build/test based on target type to run only build. Options: build, default behaviour will selected build/test based on target type")
+	flag.StringVar(&flags.bazelSubCommandOverride, "bazel-command-override", "auto", "Overrides the bazel command which runs build/test based on target type to run only build. Options: build, default behaviour will selected build/test based on target type")
+	flag.StringVar(&flags.bazelSubCommandOverride, "bazel-command-override", "auto", "Bazel subcommand used to build or test targets. Possible values: auto|build; by default, \"auto\" selects \"build\" or \"test\" based on the target's rule")
 	flag.Parse()
 
 	if flags.manualTestMode != "run" && flags.manualTestMode != "skip" {
@@ -174,11 +175,11 @@ func resolveConfig(flags driverFlags) (*config, error) {
 	}
 
 	return &config{
-		Context:              commonArgs.Context,
-		RevisionBefore:       commonArgs.RevisionBefore,
-		Targets:              commonArgs.Targets,
-		ManualTestMode:       flags.manualTestMode,
-		TargetPatternFile:    flags.targetPatternFile,
-		bazelCommandOverride: flags.bazelCommandOverride,
+		Context:                 commonArgs.Context,
+		RevisionBefore:          commonArgs.RevisionBefore,
+		Targets:                 commonArgs.Targets,
+		ManualTestMode:          flags.manualTestMode,
+		TargetPatternFile:       flags.targetPatternFile,
+		bazelSubCommandOverride: flags.bazelSubCommandOverride,
 	}, nil
 }
