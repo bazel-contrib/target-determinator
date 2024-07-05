@@ -1,4 +1,4 @@
-load("//:third_party/go/go_repository.bzl", "go_repository")
+load("@bazel_gazelle//:deps.bzl", "go_repository")
 
 def go_dependencies():
     go_repository(
@@ -312,12 +312,6 @@ def go_dependencies():
         importpath = "github.com/templexxx/xor",
         sum = "h1:fj5tQ8acgNUr6O8LEplsxDhUIe2573iLkJc+PqnzZTI=",
         version = "v0.0.0-20191217153810-f85b25db303b",
-    )
-    go_repository(
-        name = "com_github_tidwall_gjson",
-        importpath = "github.com/tidwall/gjson",
-        sum = "h1:6aeJ0bzojgWLa82gDQHcx3S0Lr/O51I9bJ5nv6JFx5w=",
-        version = "v1.14.0",
     )
     go_repository(
         name = "com_github_tidwall_match",

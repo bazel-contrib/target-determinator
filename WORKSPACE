@@ -125,3 +125,15 @@ load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_
 rules_proto_dependencies()
 
 rules_proto_toolchains()
+
+# see https://github.com/bazelbuild/bazel-gazelle/issues/1344
+# github.com/tidwall/gjson is a transitive dependency of github.com/wI2L/jsondiff.
+# due to static resolution mode, com_github_tidwall_gjson will be missing from
+# the deps of generated go_repository rules.  Moving it to the WORKSPACE is a workaround
+# for https://github.com/bazelbuild/bazel-gazelle/pull/1201.
+go_repository(
+    name = "com_github_tidwall_gjson",
+    importpath = "github.com/tidwall/gjson",
+    sum = "h1:6aeJ0bzojgWLa82gDQHcx3S0Lr/O51I9bJ5nv6JFx5w=",
+    version = "v1.14.0",
+)
