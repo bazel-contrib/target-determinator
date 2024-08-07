@@ -1,13 +1,19 @@
 #!/bin/bash
 set -eufo pipefail
 
+if [ -n "${VERBOSE:-}" ]; then
+  FLAGS=""
+else
+  FLAGS="--noshow_progress --ui_event_filters="
+fi
+
 echo "goimports" >&2
 find $(pwd) -type f -name '*.go' |
     grep -v ".pb.go" |
-    xargs bazel run --noshow_progress --ui_event_filters= @org_golang_x_tools//cmd/goimports -- -l -w
+    xargs bazel run ${FLAGS} @org_golang_x_tools//cmd/goimports -- -l -w
 echo "importsort" >&2
 find $(pwd) -type f -name '*.go' |
     grep -v ".pb.go" |
-    xargs bazel run --noshow_progress --ui_event_filters= @com_github_aristanetworks_goarista//cmd/importsort -- -w -s NOT_SPECIFIED
+    xargs bazel run ${FLAGS} @com_github_aristanetworks_goarista//cmd/importsort -- -w -s NOT_SPECIFIED
 
 bazel run //:gazelle
