@@ -1,4 +1,4 @@
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 http_archive(
     name = "bazel_gazelle",
@@ -60,8 +60,8 @@ load("@rules_jvm_external//:setup.bzl", "rules_jvm_external_setup")
 
 rules_jvm_external_setup()
 
-load("@rules_jvm_external//:defs.bzl", "maven_install")
 load("@bazel_diff//:artifacts.bzl", "BAZEL_DIFF_MAVEN_ARTIFACTS")
+load("@rules_jvm_external//:defs.bzl", "maven_install")
 
 maven_install(
     artifacts = [
@@ -96,21 +96,6 @@ load("@bazel_diff_maven//:defs.bzl", bazel_diff_pinned_maven_install = "pinned_m
 
 bazel_diff_pinned_maven_install()
 
-# Pull in bazel_differ for testing
-http_archive(
-    name = "bazel_differ",
-    sha256 = "c9265836bafcfe2925f6c44029191cda6d4c9267299cbe3a739d859da6b3a0d3",
-    strip_prefix = "bazel-differ-0.0.5",
-    url = "https://github.com/ewhauser/bazel-differ/archive/refs/tags/v0.0.5.tar.gz",
-)
-
-load("@bazel_differ//:deps.bzl", bazel_differ_deps = "go_dependencies")
-
-# Unfortunately if we don't vendor this file into the repo, gazelle doesn't seem to properly handle its contents.
-# gazelle:repository_macro third_party/go/bazel_differ_deps.bzl%go_dependencies
-# gazelle:ignore
-bazel_differ_deps()
-
 http_archive(
     name = "rules_proto",
     sha256 = "b9e1268c5bce4bb01ef31730300b8a4f562dc1211088f125c39af716f6f65f60",
@@ -125,3 +110,31 @@ load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_
 rules_proto_dependencies()
 
 rules_proto_toolchains()
+
+##########################################################
+# bazel-differ: https://github.com/ewhauser/bazel-differ #
+##########################################################
+
+http_file(
+    name = "bazel_differ_linux_arm64",
+    sha256 = "7a7166aa526c3688b9fb71dfc8913c35902d4a440a32ff02db55e7b91a97f666",
+    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.5/bazel-differ-linux-arm64",
+)
+
+http_file(
+    name = "bazel_differ_linux_x86_64",
+    sha256 = "ce563301a22f41cc111f2966fc77a23e655fbe1140d93b33eb4818f06c40a8d5",
+    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.5/bazel-differ-linux-x86_64",
+)
+
+http_file(
+    name = "bazel_differ_darwin_arm64",
+    sha256 = "0bcbfecfb9788764efa63922322b3c2d5a1a9c0da26b2dd8e7565ca60960e231",
+    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.5/bazel-differ-darwin-arm64",
+)
+
+http_file(
+    name = "bazel_differ_darwin_x86_64",
+    sha256 = "a18c17f1a5e9830dfadb5ad3df02b453882fc9ec46837e9f8450c655d2cbe214",
+    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.5/bazel-differ-darwin-x86_64",
+)

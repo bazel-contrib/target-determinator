@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_jvm_external//:defs.bzl", "artifact")
 
 java_test(
@@ -28,10 +29,10 @@ java_test(
     srcs = [
         "BazelDifferIntegrationTest.java",
     ],
-    data = ["@bazel_differ//cli:bazel-differ"],
+    data = [":bazel-differ-binary"],
     env_inherit = ["CC"],
     jvm_flags = [
-        "-Dbazel_differ=$(rootpath @bazel_differ//cli:bazel-differ)",
+        "-Dbazel_differ=$(rootpath :bazel-differ-binary)",
     ],
     tags = ["no-sandbox"],
     deps = [
@@ -119,4 +120,20 @@ java_library(
         artifact("org.eclipse.jgit:org.eclipse.jgit"),
         artifact("org.hamcrest:hamcrest-all"),
     ],
+)
+
+copy_file(
+    name = "bazel-differ-binary",
+    src = ":original-bazel-differ",
+    out = "bazel-differ",
+)
+
+alias(
+    name = "original-bazel-differ",
+    actual = select({
+        "//:linux_arm64": "@bazel_differ_linux_arm64//file",
+        "//:linux_x86_64": "@bazel_differ_linux_x86_64//file",
+        "//:macos_arm64": "@bazel_differ_darwin_arm64//file",
+        "//:macos_x86_64": "@bazel_differ_darwin_x86_64//file",
+    }),
 )
