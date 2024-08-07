@@ -108,7 +108,8 @@ http_archive(
 load("@bazel_differ//:deps.bzl", bazel_differ_deps = "go_dependencies")
 
 # Unfortunately if we don't vendor this file into the repo, gazelle doesn't seem to properly handle its contents.
-# gazelle:repository_macro third_party/go/bazel_differ_deps.bzl%go_dependencies
+# Remove the `aa` in the macro below to run gazelle for this, but remember to disable the same macro earlier in this file
+# gaazelle:repository_macro third_party/go/bazel_differ_deps.bzl%go_dependenciesx
 # gazelle:ignore
 bazel_differ_deps()
 
