@@ -664,7 +664,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 
 	// Work around https://github.com/bazelbuild/bazel/issues/21010
 	var incompatibleTargetsToFilter map[label.Label]bool
-	hasIncompatibleTargetsBug, explanation := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("7.0.0-pre.20230628.2")), nil)
+	hasIncompatibleTargetsBug, explanation := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("7.0.0-pre.20230628.2")), version.Must(version.NewVersion("7.4.0")))
 	if hasIncompatibleTargetsBug != nil && *hasIncompatibleTargetsBug {
 		if !context.FilterIncompatibleTargets {
 			return nil, fmt.Errorf("requested not to filter incompatible targets, but bazel version %s has a bug requiring filtering incompatible targets - see https://github.com/bazelbuild/bazel/issues/21010", bazelRelease)
