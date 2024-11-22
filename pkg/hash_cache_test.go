@@ -110,7 +110,7 @@ func TestDigestsSingleSourceFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error hashing file: %v", err)
 	}
-	const want = "33e4ab761182518bbdaabdb916ecea5ad264778881dbe4ce93567f07ea89784b"
+	const want = "321ef2ce71642ec8f05102359c10fb2cef9feb5719065452ffcd18c76077e3c1"
 	got := hex.EncodeToString(hash)
 	if want != got {
 		t.Fatalf("Wrong hash: want %v got %v", want, got)
@@ -411,6 +411,41 @@ func Test_isConfiguredRuleInputsSupported(t *testing.T) {
 			got := isConfiguredRuleInputsSupported(version)
 			if want != got {
 				t.Fatalf("Incorrect isConfiguredRuleInputsSupported: want %v got %v", want, got)
+			}
+		})
+	}
+}
+
+func Test_getUserPermission(t *testing.T) {
+	tests := []struct {
+		fileInfo os.FileMode
+		want     os.FileMode
+	}{
+		{
+			fileInfo: 0777,
+			want:     0100,
+		},
+		{
+			fileInfo: 0177,
+			want:     0100,
+		},
+		{
+			fileInfo: 0111,
+			want:     0100,
+		},
+		{
+			fileInfo: 0664,
+			want:     0000,
+		},
+		{
+			fileInfo: 0644,
+			want:     0000,
+		},
+	}
+	for _, tt := range tests {
+		t.Run("", func(t *testing.T) {
+			if got := getUserExecuteBit(tt.fileInfo); got != tt.want {
+				t.Errorf("getUserExecuteBit() = %v, want %v", got, tt.want)
 			}
 		})
 	}

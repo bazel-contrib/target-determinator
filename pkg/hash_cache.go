@@ -625,7 +625,15 @@ func (hc *fileHashCache) Hash(path string) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := fmt.Fprintf(hasher, info.Mode().String()); err != nil {
+
+		// Only record the user permissions, and only the execute bit:
+		// - group and others permissions differences don't affect the build and are not tracked by git. This means that
+		//   a file created as 0775 by a script and then added to git might show up as 0755 when performing a
+		//  `git clone` or a `git checkout`. This can cause issues when TD uses a git worktree for the `before` case.
+		// - bazel and git don't care if a file is writeable, and the hashing below will fail if the file isn't readable
+		//   anyway.
+		userExecPerm := getUserExecuteBit(info.Mode())
+		if _, err := fmt.Fprintf(hasher, userExecPerm.String()); err != nil {
 			return nil, err
 		}
 
@@ -636,6 +644,11 @@ func (hc *fileHashCache) Hash(path string) ([]byte, error) {
 		entry.hash = hasher.Sum(nil)
 	}
 	return entry.hash, nil
+}
+
+func getUserExecuteBit(info os.FileMode) os.FileMode {
+	var userPermMask os.FileMode = 0100
+	return info & userPermMask
 }
 
 // Swallows errors, because assumes you're writing to an infallible Writer like a hasher.

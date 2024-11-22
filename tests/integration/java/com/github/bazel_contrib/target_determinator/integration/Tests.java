@@ -9,11 +9,12 @@ import com.github.bazel_contrib.target_determinator.label.Label;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
 import org.eclipse.jgit.util.FileUtils;
 import org.junit.*;
 import org.junit.rules.TestName;
-
 /**
  * Tests for target determinators.
  *
@@ -113,6 +114,28 @@ public abstract class Tests {
   @Test
   public void explicitlySpecifyingDefaultValueDoesNotTrigger_native() throws Exception {
     doTest(Commits.TWO_TESTS, Commits.EXPLICIT_DEFAULT_VALUE, Set.of());
+  }
+
+  @Test
+  public void changingUnimportantPermissionDoesNotTrigger_native() throws Exception {
+    if (!isWindows()) {
+      gitCheckout(Commits.EXPLICIT_DEFAULT_VALUE);
+      Path srcFile = Path.of("java/example/ExampleTest.java");
+      changeFileMode(srcFile, "r--r--r--");
+      doTest(Commits.TWO_TESTS, Commits.EXPLICIT_DEFAULT_VALUE, Set.of());
+      changeFileMode(srcFile, "rw-rw-rw-");
+      doTest(Commits.TWO_TESTS, Commits.EXPLICIT_DEFAULT_VALUE, Set.of());
+    }
+  }
+
+  @Test
+  public void changingImportantPermissionDoesTriggers_native() throws Exception {
+    if (!isWindows()) {
+      gitCheckout(Commits.EXPLICIT_DEFAULT_VALUE);
+      Path srcFile = Path.of("java/example/ExampleTest.java");
+      changeFileMode(srcFile, "rwxr--r--");
+      doTest(Commits.TWO_TESTS, Commits.EXPLICIT_DEFAULT_VALUE, Set.of("//java/example:ExampleTest"));
+    }
   }
 
   @Test
@@ -387,6 +410,7 @@ public abstract class Tests {
     doTest(Commits.TWO_TESTS, Commits.HAS_JVM_FLAGS, Set.of("//java/example:ExampleTest"));
   }
 
+
   @Test
   public void succeedForUncleanIgnoredFiles() throws Exception {
     Path ignoredFile = testDir.resolve("ignored-file");
@@ -602,6 +626,19 @@ public abstract class Tests {
   private boolean isLinux() {
     return "Linux".equals(System.getProperty("os.name"));
   }
+
+  private boolean isWindows() {
+    return System.getProperty("os.name").startsWith("Windows");
+  }
+
+  private void changeFileMode(final Path filePath, final String fileModeString) {
+    Set<PosixFilePermission> filePermissions = PosixFilePermissions.fromString(fileModeString);
+    try {
+      Files.setPosixFilePermissions(testDir.resolve(filePath), filePermissions);
+    } catch (Exception e) {
+      fail(e.getMessage());
+    }
+  }
 }
 
 class Commits {
@@ -685,7 +722,7 @@ class Commits {
       "d1b1d8f07f2e99429bafda134282b97588c69b3d";
   public static final String TWO_TESTS_BRANCH =
       "two-tests-branch"; // Local only (created by the test case).
-  public static final String ONE_SH_TEST = 
+  public static final String ONE_SH_TEST =
       "ff7e60d535564a0695a5bf9ed1774bacc480bf50"; // (v1/sh-test) add an executable shell file and BUILD.bazel file
   public static final String SH_TEST_NOT_EXECUTABLE =
       "6452291f3dcea1a5cdb332463308b70325a833e0"; // (v1/sh-test-non-executable) make shell file non-executable

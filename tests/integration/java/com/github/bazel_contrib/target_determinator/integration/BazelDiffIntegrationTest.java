@@ -148,6 +148,12 @@ public class BazelDiffIntegrationTest extends Tests {
   }
 
   @Override
+  public void changingUnimportantPermissionDoesNotTrigger_native() throws Exception {
+    allowOverBuilds("bazel-diff takes into account all permission bits.");
+    super.changingUnimportantPermissionDoesNotTrigger_native();
+  }
+
+  @Override
   public void refactoringStarlarkRuleIsNoOp() throws Exception {
     allowOverBuilds(
         "Rule implementation attr factors in hashes of entire transitively loaded bzl files, rather"
