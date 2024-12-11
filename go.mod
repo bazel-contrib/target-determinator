@@ -1,8 +1,6 @@
 module github.com/bazel-contrib/target-determinator
 
-go 1.22
-
-toolchain go1.22.10
+go 1.18
 
 require (
 	github.com/aristanetworks/goarista v0.0.0-20220211174905-526022c8b178
