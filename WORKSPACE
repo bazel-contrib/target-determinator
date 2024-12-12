@@ -2,9 +2,9 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file"
 
 http_archive(
     name = "bazel_gazelle",
-    sha256 = "efbbba6ac1a4fd342d5122cbdfdb82aeb2cf2862e35022c752eaddffada7c3f3",
+    sha256 = "75df288c4b31c81eb50f51e2e14f4763cb7548daae126817247064637fd9ea62",
     urls = [
-        "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.27.0/bazel-gazelle-v0.27.0.tar.gz",
+        "https://github.com/bazelbuild/bazel-gazelle/releases/download/v0.36.0/bazel-gazelle-v0.36.0.tar.gz",
     ],
 )
 
@@ -18,10 +18,6 @@ http_archive(
 )
 
 load("@io_bazel_rules_go//go:deps.bzl", "go_register_toolchains", "go_rules_dependencies")
-load("//:third_party/go/deps.bzl", "go_dependencies")
-
-# gazelle:repository_macro third_party/go/deps.bzl%go_dependencies
-go_dependencies()
 
 go_rules_dependencies()
 
@@ -110,6 +106,11 @@ load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_
 rules_proto_dependencies()
 
 rules_proto_toolchains()
+
+load("//:third_party/go/deps.bzl", "go_dependencies")
+
+# gazelle:repository_macro third_party/go/deps.bzl%go_dependencies
+go_dependencies()
 
 ##########################################################
 # bazel-differ: https://github.com/ewhauser/bazel-differ #

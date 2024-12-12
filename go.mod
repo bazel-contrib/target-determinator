@@ -11,10 +11,11 @@ require (
 	github.com/otiai10/copy v1.7.1-0.20211223015809-9aae5f77261f
 	github.com/stretchr/testify v1.8.4
 	github.com/wI2L/jsondiff v0.2.0
-	google.golang.org/protobuf v1.27.1
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
+	github.com/bazelbuild/buildtools v0.0.0-20240918101019-be1c24cc9a44 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/tidwall/gjson v1.14.0 // indirect
