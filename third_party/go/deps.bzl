@@ -28,8 +28,8 @@ def go_dependencies():
     go_repository(
         name = "com_github_bazelbuild_bazel_gazelle",
         importpath = "github.com/bazelbuild/bazel-gazelle",
-        sum = "h1:7SABASdzy94tbvklgX8ThG+1y7ZNl2eFYRVevjOXpgw=",
-        version = "v0.38.0",
+        sum = "h1:5RCU7g9tWPOa1ySkQgpPRDhiXfG5+38W4acSuKSQyrs=",
+        version = "v0.39.0",
     )
     go_repository(
         name = "com_github_bazelbuild_buildtools",
@@ -442,8 +442,8 @@ def go_dependencies():
     go_repository(
         name = "org_golang_x_mod",
         importpath = "golang.org/x/mod",
-        sum = "h1:QX4fJ0Rr5cPQCF7O9lh9Se4pmwfwskqZfq5moyldzic=",
-        version = "v0.16.0",
+        sum = "h1:utOm6MM3R3dnawAiJgn0y+xvuYRsm1RKM/4giyfDgV0=",
+        version = "v0.20.0",
     )
     go_repository(
         name = "org_golang_x_net",
@@ -454,8 +454,8 @@ def go_dependencies():
     go_repository(
         name = "org_golang_x_sync",
         importpath = "golang.org/x/sync",
-        sum = "h1:5BMeUDZ7vkXGfEr1x9B4bRcTH4lpkTkpdh0T/J+qjbQ=",
-        version = "v0.6.0",
+        sum = "h1:3NFvSEYkUoMifnESzZl15y791HH1qU2xm6eCJU5ZPXQ=",
+        version = "v0.8.0",
     )
     go_repository(
         name = "org_golang_x_sys",

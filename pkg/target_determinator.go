@@ -721,7 +721,15 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
 		}
-		if context.FilterIncompatibleTargets && !compatibleTargets[l] {
+		// Need to do this due to a change in bazel-gazelle & how equality between labels is determined.
+		// Likey happened in https://github.com/bazel-contrib/bazel-gazelle/pull/1911.
+		isCompatible := false
+		for k, _ := range compatibleTargets {
+			if k.String() == l.String() {
+				isCompatible = true
+			}
+		}
+		if context.FilterIncompatibleTargets && !isCompatible {
 			continue // Ignore incompatible targets
 		}
 		labels = append(labels, l)
