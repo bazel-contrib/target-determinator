@@ -727,6 +727,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		for k, _ := range compatibleTargets {
 			if k.String() == l.String() {
 				isCompatible = true
+				break
 			}
 		}
 		if context.FilterIncompatibleTargets && !isCompatible {
