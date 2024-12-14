@@ -712,6 +712,12 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 			return nil, fmt.Errorf("failed to find compatible targets: %w", err)
 		}
 	}
+	// Need to do this due to a change in bazel-gazelle & how equality between labels is determined.
+	// Likey happened in https://github.com/bazel-contrib/bazel-gazelle/pull/1911.
+	var compatibleTargetsStrKey = make(map[string]bool, len(compatibleTargets))
+	for k, v := range compatibleTargets {
+		compatibleTargetsStrKey[k.String()] = v
+	}
 
 	log.Println("Matching labels to configurations")
 	labels := make([]label.Label, 0)
@@ -721,7 +727,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
 		}
-		if context.FilterIncompatibleTargets && !compatibleTargets[l] {
+		if context.FilterIncompatibleTargets && !compatibleTargetsStrKey[l.String()] {
 			continue // Ignore incompatible targets
 		}
 		labels = append(labels, l)
