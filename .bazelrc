@@ -5,4 +5,3 @@ build --tool_java_runtime_version=remotejdk_11
 
 build --verbose_failures
 build --test_output=errors
-common --noenable_workspace

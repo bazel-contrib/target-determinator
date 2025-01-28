@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
-load("@rules_jvm_external//:defs.bzl", "artifact")
 load("@rules_java//java:defs.bzl", "java_library", "java_test")
+load("@rules_jvm_external//:defs.bzl", "artifact")
 
 java_test(
     name = "BazelDiffIntegrationTest",

@@ -13,6 +13,7 @@ go_proto_library(
 proto_library(
     name = "analysis_v2_proto",
     srcs = ["analysis_v2.proto"],
+    visibility = ["//visibility:public"],
     deps = ["//third_party/protobuf/bazel/build:build_proto"],
 )
 

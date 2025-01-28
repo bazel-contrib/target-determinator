@@ -47,6 +47,7 @@ use_repo(
     "com_github_stretchr_testify",
     "com_github_wi2l_jsondiff",
     "org_golang_google_protobuf",
+    "org_golang_x_tools",
 )
 
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
