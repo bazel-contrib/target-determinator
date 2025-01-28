@@ -19,7 +19,6 @@ public class BazelDiffIntegrationTest extends Tests {
   Set<Label> getTargets(Path workspace, String commitBefore, String commitAfter)
       throws TargetComputationErrorException {
     String workspacePath = workspace.toString();
-    System.out.print(BAZEL_DIFF);
     try {
       Path tempdir = Files.createTempDirectory("targetdeterminator-bazel-diff");
 
@@ -42,8 +41,6 @@ public class BazelDiffIntegrationTest extends Tests {
           hashesBefore,
           "-fh",
           hashesAfter,
-          // "-b",
-          //BAZEL,
           "-o",
           affectedTargets.toString());
       return Util.linesToLabels(affectedTargets);
