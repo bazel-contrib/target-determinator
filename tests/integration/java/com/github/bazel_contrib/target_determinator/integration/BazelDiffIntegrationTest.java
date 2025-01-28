@@ -29,10 +29,10 @@ public class BazelDiffIntegrationTest extends Tests {
 
       runProcess(workspace, "git", "checkout", "--quiet", commitBefore);
       runProcess(
-          workspace, "java", "-jar", BAZEL_DIFF, "generate-hashes", "-w", workspacePath, "-b", BAZEL, hashesBefore);
+          workspace, "java", "-jar", BAZEL_DIFF, "generate-hashes", "--excludeExternalTargets", "-w", workspacePath, "-b", BAZEL, hashesBefore);
       runProcess(workspace, "git", "checkout", "--quiet", commitAfter);
       runProcess(
-          workspace, "java", "-jar", BAZEL_DIFF, "generate-hashes", "-w", workspacePath, "-b", BAZEL, hashesAfter);
+          workspace, "java", "-jar", BAZEL_DIFF, "generate-hashes", "--excludeExternalTargets", "-w", workspacePath, "-b", BAZEL, hashesAfter);
       runProcess(
           workspace,
           "java", "-jar",

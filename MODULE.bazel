@@ -68,7 +68,7 @@ use_repo(maven, "maven")
 # bazel-differ: https://github.com/ewhauser/bazel-differ #
 ##########################################################
 multitool = use_extension("@rules_multitool//multitool:extension.bzl", "multitool")
-multitool.hub(lockfile = "//third_party/multitool:multitool.lock.json")
+multitool.hub(lockfile = "multitool.lock.json")
 use_repo(multitool, "multitool")
 
 ####################################################

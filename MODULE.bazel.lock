@@ -163,6 +163,35 @@
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
+    "//:extensions.bzl%extension": {
+      "general": {
+        "bzlTransitiveDigest": "aGkqzNIwWmuVqv9mxNDtizjPUatqSiwa6pHYSFFD77k=",
+        "usagesDigest": "XTM6M/8epkBqfvkDUQZOW07w1+VT1YWkqnXY25m2T38=",
+        "recordedFileInputs": {},
+        "recordedDirentsInputs": {},
+        "envVariables": {},
+        "generatedRepoSpecs": {
+          "bazel-diff": {
+            "repoRuleId": "@@bazel_tools//tools/build_defs/repo:http.bzl%http_file",
+            "attributes": {
+              "downloaded_file_path": "bazel-diff.jar",
+              "executable": true,
+              "sha256": "5f36e74a8d6167e4d31f663526a63be3e3728456d8b5b4a84503315dd10e65e7",
+              "urls": [
+                "https://github.com/Tinder/bazel-diff/releases/download/9.0.0/bazel-diff_deploy.jar"
+              ]
+            }
+          }
+        },
+        "recordedRepoMappingEntries": [
+          [
+            "",
+            "bazel_tools",
+            "bazel_tools"
+          ]
+        ]
+      }
+    },
     "@@buildifier_prebuilt+//:defs.bzl%buildifier_prebuilt_deps_extension": {
       "general": {
         "bzlTransitiveDigest": "qC/0s/MZ8q8Sf6/o/iJNMssZNgXa3CjJ7vEVbpHFQRs=",
