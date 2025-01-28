@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Check dependencies and format
-        run: scripts/update-dependencies && scripts/format && { [[ -z "$(git status --porcelain)" ]] || exit 1; }
+        run: scripts/format && { [[ -z "$(git status --porcelain)" ]] || exit 1; }
       - name: bazel test //...
         env:
           # Bazelisk will download bazel to here, ensure it is cached within tests.

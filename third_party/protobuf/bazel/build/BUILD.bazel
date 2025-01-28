@@ -1,11 +1,32 @@
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
 load("//rules:copy_proto_output.bzl", "copy_proto_output")
 
 go_proto_library(
     name = "build",
     importpath = "github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build",
-    proto = "@bazel_tools//src/main/protobuf:build_proto",
+    proto = ":build_proto",
     visibility = ["//visibility:public"],
+    deps = [":stardoc_go"],
+)
+
+proto_library(
+    name = "build_proto",
+    srcs = ["build.proto"],
+    visibility = ["//visibility:public"],
+    deps = [":stardoc_output_proto"],
+)
+
+go_proto_library(
+    name = "stardoc_go",
+    importpath = "github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/stardoc",
+    proto = ":stardoc_output_proto",
+    visibility = ["//visibility:public"],
+)
+
+proto_library(
+    name = "stardoc_output_proto",
+    srcs = [":stardoc_output.proto"],
 )
 
 copy_proto_output(

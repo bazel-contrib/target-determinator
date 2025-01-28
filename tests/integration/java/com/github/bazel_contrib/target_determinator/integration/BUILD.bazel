@@ -1,5 +1,6 @@
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_jvm_external//:defs.bzl", "artifact")
+load("@rules_java//java:defs.bzl", "java_library", "java_test")
 
 java_test(
     name = "BazelDiffIntegrationTest",
@@ -7,12 +8,15 @@ java_test(
     srcs = [
         "BazelDiffIntegrationTest.java",
     ],
-    data = ["@bazel_diff//src/main/java/com/bazel_diff:bazel-diff"],
+    data = ["@bazel-diff//file:bazel-diff.jar"],
     env_inherit = ["CC"],
     jvm_flags = [
-        "-Dbazel_diff=$(rootpath @bazel_diff//src/main/java/com/bazel_diff:bazel-diff)",
+        "-Dbazel_diff=$(rootpath @bazel-diff//file:bazel-diff.jar)",
     ],
-    tags = ["no-sandbox"],
+    tags = [
+        #"manual",
+        "no-sandbox",
+    ],
     deps = [
         ":tests",
         ":util",
@@ -34,7 +38,10 @@ java_test(
     jvm_flags = [
         "-Dbazel_differ=$(rootpath :bazel-differ-binary)",
     ],
-    tags = ["no-sandbox"],
+    tags = [
+        #"manual",
+        "no-sandbox",
+    ],
     deps = [
         ":tests",
         ":util",
@@ -130,10 +137,5 @@ copy_file(
 
 alias(
     name = "original-bazel-differ",
-    actual = select({
-        "//:linux_arm64": "@bazel_differ_linux_arm64//file",
-        "//:linux_x86_64": "@bazel_differ_linux_x86_64//file",
-        "//:macos_arm64": "@bazel_differ_darwin_arm64//file",
-        "//:macos_x86_64": "@bazel_differ_darwin_x86_64//file",
-    }),
+    actual = "@multitool//tools/bazel-differ",
 )

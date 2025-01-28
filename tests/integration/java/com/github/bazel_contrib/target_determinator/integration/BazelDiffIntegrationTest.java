@@ -19,6 +19,7 @@ public class BazelDiffIntegrationTest extends Tests {
   Set<Label> getTargets(Path workspace, String commitBefore, String commitAfter)
       throws TargetComputationErrorException {
     String workspacePath = workspace.toString();
+    System.out.print(BAZEL_DIFF);
     try {
       Path tempdir = Files.createTempDirectory("targetdeterminator-bazel-diff");
 
@@ -28,21 +29,21 @@ public class BazelDiffIntegrationTest extends Tests {
 
       runProcess(workspace, "git", "checkout", "--quiet", commitBefore);
       runProcess(
-          workspace, BAZEL_DIFF, "generate-hashes", "-w", workspacePath, "-b", BAZEL, hashesBefore);
+          workspace, "java", "-jar", BAZEL_DIFF, "generate-hashes", "-w", workspacePath, "-b", BAZEL, hashesBefore);
       runProcess(workspace, "git", "checkout", "--quiet", commitAfter);
       runProcess(
-          workspace, BAZEL_DIFF, "generate-hashes", "-w", workspacePath, "-b", BAZEL, hashesAfter);
+          workspace, "java", "-jar", BAZEL_DIFF, "generate-hashes", "-w", workspacePath, "-b", BAZEL, hashesAfter);
       runProcess(
           workspace,
+          "java", "-jar",
           BAZEL_DIFF,
+          "get-impacted-targets",
           "-sh",
           hashesBefore,
           "-fh",
           hashesAfter,
-          "-w",
-          workspacePath,
-          "-b",
-          BAZEL,
+          // "-b",
+          //BAZEL,
           "-o",
           affectedTargets.toString());
       return Util.linesToLabels(affectedTargets);
@@ -62,9 +63,10 @@ public class BazelDiffIntegrationTest extends Tests {
     processBuilder.environment().put("HOME", System.getProperty("user.home"));
     processBuilder.environment().put("PATH", System.getenv("PATH"));
     try {
-      if (processBuilder.start().waitFor() != 0) {
+      int waitFor = processBuilder.start().waitFor();
+      if (waitFor != 0) {
         throw new TargetComputationErrorException(
-            String.format("Expected exit code 0 when running %s", Joiner.on(" ").join(argv)),
+            String.format("Expected exit code 0 when running %s, got %d", Joiner.on(" ").join(argv), waitFor),
             "",
             "");
       }
