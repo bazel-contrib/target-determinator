@@ -14,7 +14,7 @@ java_test(
         "-Dbazel_diff=$(rootpath @bazel-diff//file:bazel-diff.jar)",
     ],
     tags = [
-        #"manual",
+        "manual",
         "no-sandbox",
     ],
     deps = [
@@ -39,7 +39,7 @@ java_test(
         "-Dbazel_differ=$(rootpath :bazel-differ-binary)",
     ],
     tags = [
-        #"manual",
+        "manual",
         "no-sandbox",
     ],
     deps = [
