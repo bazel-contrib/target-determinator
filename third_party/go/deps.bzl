@@ -28,9 +28,6 @@ def go_dependencies():
     go_repository(
         name = "com_github_bazelbuild_bazel_gazelle",
         importpath = "github.com/bazelbuild/bazel-gazelle",
-        patches = [
-            "//third_party/patches:gazelle_regexp.patch",
-        ],
         sum = "h1:SAYys3KRG5i3KTgQAvO423bLT1rQMSgqEKReMkM/CW0=",
         version = "v0.40.0",
     )
