@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/aristanetworks/goarista v0.0.0-20220211174905-526022c8b178
-	github.com/bazelbuild/bazel-gazelle v0.40.0
+	github.com/bazelbuild/bazel-gazelle v0.42.0
 	github.com/google/btree v1.1.2
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/go-version v1.6.0
