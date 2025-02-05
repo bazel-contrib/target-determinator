@@ -1,7 +1,7 @@
 github.com/aristanetworks/goarista v0.0.0-20220211174905-526022c8b178 h1:U7Y+d65r8YW6PRIu+YaTqQGkmTx7PMI+oDVic5FTP8c=
 github.com/aristanetworks/goarista v0.0.0-20220211174905-526022c8b178/go.mod h1:9zxrD1FatJPUgxIsMwWVrALau7/v1sI1OJETI63r670=
-github.com/bazelbuild/bazel-gazelle v0.40.0 h1:SAYys3KRG5i3KTgQAvO423bLT1rQMSgqEKReMkM/CW0=
-github.com/bazelbuild/bazel-gazelle v0.40.0/go.mod h1:xI42W5YdKQg0g3rj1jZfdW8j1UihNmvb5KwWDdHg2ec=
+github.com/bazelbuild/bazel-gazelle v0.42.0 h1:BpkUzE3H2l6buJYFTKgzVMecJimQgWwYud25qVIx0SQ=
+github.com/bazelbuild/bazel-gazelle v0.42.0/go.mod h1:SRCc60YGZ27y+BqLzQ+nMh249+FyZz7YtX/V2ng+/z4=
 github.com/bazelbuild/buildtools v0.0.0-20240918101019-be1c24cc9a44 h1:FGzENZi+SX9I7h9xvMtRA3rel8hCEfyzSixteBgn7MU=
 github.com/bazelbuild/buildtools v0.0.0-20240918101019-be1c24cc9a44/go.mod h1:PLNUetjLa77TCCziPsz0EI8a6CUxgC+1jgmWv0H25tg=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
