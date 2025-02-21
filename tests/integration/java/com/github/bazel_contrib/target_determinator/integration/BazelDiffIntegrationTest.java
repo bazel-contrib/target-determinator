@@ -2,7 +2,8 @@ package com.github.bazel_contrib.target_determinator.integration;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
 import com.google.common.base.Joiner;
-import java.io.File;
+import com.google.devtools.build.runfiles.Runfiles;
+
 import java.io.IOException;
 import java.lang.ProcessBuilder.Redirect;
 import java.nio.file.Files;
@@ -12,9 +13,14 @@ import org.junit.Ignore;
 import org.junit.Test;
 
 public class BazelDiffIntegrationTest extends Tests {
-  private static final String BAZEL_DIFF =
-      new File(System.getProperty("bazel_diff")).getAbsolutePath();
   private static final String BAZEL = "bazelisk";
+  private String bazelDiff;
+
+  public BazelDiffIntegrationTest() throws IOException {
+      Runfiles runfiles = Runfiles.create();
+      String path = runfiles.rlocation("target-determinator/tests/integration/java/com/github/bazel_contrib/target_determinator/integration/bazel-diff");
+      bazelDiff = path;
+  }
 
   Set<Label> getTargets(Path workspace, String commitBefore, String commitAfter)
       throws TargetComputationErrorException {
@@ -28,21 +34,18 @@ public class BazelDiffIntegrationTest extends Tests {
 
       runProcess(workspace, "git", "checkout", "--quiet", commitBefore);
       runProcess(
-          workspace, BAZEL_DIFF, "generate-hashes", "-w", workspacePath, "-b", BAZEL, hashesBefore);
+          workspace, bazelDiff, "generate-hashes", "-w", workspacePath, "-b", BAZEL, "-tt", "Rule", "--excludeExternalTargets", hashesBefore);
       runProcess(workspace, "git", "checkout", "--quiet", commitAfter);
       runProcess(
-          workspace, BAZEL_DIFF, "generate-hashes", "-w", workspacePath, "-b", BAZEL, hashesAfter);
+          workspace, bazelDiff, "generate-hashes", "-w", workspacePath, "-b", BAZEL,  "-tt", "Rule", "--excludeExternalTargets", hashesAfter);
       runProcess(
           workspace,
-          BAZEL_DIFF,
+              bazelDiff,
+          "get-impacted-targets",
           "-sh",
           hashesBefore,
           "-fh",
           hashesAfter,
-          "-w",
-          workspacePath,
-          "-b",
-          BAZEL,
           "-o",
           affectedTargets.toString());
       return Util.linesToLabels(affectedTargets);
@@ -172,4 +175,8 @@ public class BazelDiffIntegrationTest extends Tests {
   @Override
   @Ignore("bazel-diff does not filter incompatible targets")
   public void incompatibleTargetsAreFiltered_bazelIssue21010() throws Exception {}
+
+  @Override
+  @Ignore("bazel-diff will not generate any results if there are no build files")
+  public void zeroToOneTarget_native() throws Exception {}
 }

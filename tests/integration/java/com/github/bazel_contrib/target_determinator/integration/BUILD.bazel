@@ -7,11 +7,8 @@ java_test(
     srcs = [
         "BazelDiffIntegrationTest.java",
     ],
-    data = ["@bazel_diff//src/main/java/com/bazel_diff:bazel-diff"],
+    data = [":bazel-diff"],
     env_inherit = ["CC"],
-    jvm_flags = [
-        "-Dbazel_diff=$(rootpath @bazel_diff//src/main/java/com/bazel_diff:bazel-diff)",
-    ],
     tags = ["no-sandbox"],
     deps = [
         ":tests",
@@ -20,7 +17,21 @@ java_test(
         artifact("com.google.code.findbugs:jsr305"),
         artifact("junit:junit"),
         "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
+        "@bazel_tools//tools/java/runfiles",
     ],
+)
+
+java_import(
+    name = "raw-bazel-diff-deploy-jar",
+    jars = [
+        "@bazel_diff//file",
+    ],
+)
+
+java_binary(
+    name = "bazel-diff",
+    main_class = "com.bazel_diff.Main",
+    runtime_deps = [":raw-bazel-diff-deploy-jar"],
 )
 
 java_test(
@@ -30,7 +41,10 @@ java_test(
         "BazelDifferIntegrationTest.java",
     ],
     data = [":bazel-differ-binary"],
-    env_inherit = ["CC"],
+    env_inherit = [
+        "CC",
+        "PATH",
+    ],
     jvm_flags = [
         "-Dbazel_differ=$(rootpath :bazel-differ-binary)",
     ],
