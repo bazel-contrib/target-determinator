@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library")
 load("//rules:multi_platform_go_binary.bzl", "multi_platform_go_binary")
 
 go_library(
@@ -10,7 +10,7 @@ go_library(
         "//cli",
         "//pkg",
         "//third_party/protobuf/bazel/analysis",
-        "@com_github_bazelbuild_bazel_gazelle//label",
+        "@gazelle//label",
     ],
 )
 
