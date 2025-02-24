@@ -1,3 +1,5 @@
+workspace(name = "target-determinator")
+
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 http_archive(
@@ -10,10 +12,10 @@ http_archive(
 
 http_archive(
     name = "io_bazel_rules_go",
-    sha256 = "099a9fb96a376ccbbb7d291ed4ecbdfd42f6bc822ab77ae6f1b5cb9e914e94fa",
+    sha256 = "f74c98d6df55217a36859c74b460e774abc0410a47cc100d822be34d5f990f16",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.35.0/rules_go-v0.35.0.zip",
-        "https://github.com/bazelbuild/rules_go/releases/download/v0.35.0/rules_go-v0.35.0.zip",
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.47.1/rules_go-v0.47.1.zip",
+        "https://github.com/bazelbuild/rules_go/releases/download/v0.47.1/rules_go-v0.47.1.zip",
     ],
 )
 
@@ -28,24 +30,22 @@ load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
 gazelle_dependencies()
 
 # Pull in bazel_diff for testing.
-http_archive(
+http_file(
     name = "bazel_diff",
-    patch_args = ["-p1"],
-    patches = ["@//:third_party/patches/bazel-diff-only-just-non-external-rules.patch"],
-    sha256 = "bdc3ef2192e9aeb288506e2f348aef57bce5e4facf7374b6185ac5ccdd4a9001",
-    strip_prefix = "bazel-diff-3.5.0",
-    url = "https://github.com/Tinder/bazel-diff/archive/refs/tags/3.5.0.tar.gz",
+    downloaded_file_path = "bazel-diff_deploy.jar",
+    sha256 = "5f36e74a8d6167e4d31f663526a63be3e3728456d8b5b4a84503315dd10e65e7",
+    url = "https://github.com/Tinder/bazel-diff/releases/download/9.0.0/bazel-diff_deploy.jar",
 )
 
-RULES_JVM_EXTERNAL_TAG = "4.2"
+RULES_JVM_EXTERNAL_TAG = "6.7"
 
-RULES_JVM_EXTERNAL_SHA = "2cd77de091e5376afaf9cc391c15f093ebd0105192373b334f0a855d89092ad5"
+RULES_JVM_EXTERNAL_SHA = "a1e351607f04fed296ba33c4977d3fe2a615ed50df7896676b67aac993c53c18"
 
 http_archive(
     name = "rules_jvm_external",
     sha256 = RULES_JVM_EXTERNAL_SHA,
     strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
-    url = "https://github.com/bazelbuild/rules_jvm_external/archive/refs/tags/%s.tar.gz" % RULES_JVM_EXTERNAL_TAG,
+    url = "https://github.com/bazel-contrib/rules_jvm_external/releases/download/%s/rules_jvm_external-%s.tar.gz" % (RULES_JVM_EXTERNAL_TAG, RULES_JVM_EXTERNAL_TAG),
 )
 
 load("@rules_jvm_external//:repositories.bzl", "rules_jvm_external_deps")
@@ -56,7 +56,6 @@ load("@rules_jvm_external//:setup.bzl", "rules_jvm_external_setup")
 
 rules_jvm_external_setup()
 
-load("@bazel_diff//:artifacts.bzl", "BAZEL_DIFF_MAVEN_ARTIFACTS")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 
 maven_install(
@@ -74,30 +73,29 @@ maven_install(
     ],
 )
 
-maven_install(
-    name = "bazel_diff_maven",
-    artifacts = BAZEL_DIFF_MAVEN_ARTIFACTS,
-    fail_if_repin_required = True,
-    maven_install_json = "@//:bazel_diff_maven_install.json",
-    repositories = [
-        "https://repo1.maven.org/maven2",
-    ],
-)
-
 load("@maven//:defs.bzl", "pinned_maven_install")
 
 pinned_maven_install()
 
-load("@bazel_diff_maven//:defs.bzl", bazel_diff_pinned_maven_install = "pinned_maven_install")
+# We need a modern `rules_python` so that the old version of `rules_proto` we have works with recent bazel releases
 
-bazel_diff_pinned_maven_install()
+http_archive(
+    name = "rules_python",
+    sha256 = "62ddebb766b4d6ddf1712f753dac5740bea072646f630eb9982caa09ad8a7687",
+    strip_prefix = "rules_python-0.39.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.39.0/rules_python-0.39.0.tar.gz",
+)
+
+load("@rules_python//python:repositories.bzl", "py_repositories")
+
+py_repositories()
 
 http_archive(
     name = "rules_proto",
-    sha256 = "b9e1268c5bce4bb01ef31730300b8a4f562dc1211088f125c39af716f6f65f60",
-    strip_prefix = "rules_proto-e507ccded37c389186afaeb2b836ec576dc875dc",
+    sha256 = "dc3fb206a2cb3441b485eb1e423165b231235a1ea9b031b4433cf7bc1fa460dd",
+    strip_prefix = "rules_proto-5.3.0-21.7",
     urls = [
-        "https://github.com/bazelbuild/rules_proto/archive/e507ccded37c389186afaeb2b836ec576dc875dc.tar.gz",
+        "https://github.com/bazelbuild/rules_proto/archive/refs/tags/5.3.0-21.7.tar.gz",
     ],
 )
 
@@ -118,24 +116,28 @@ go_dependencies()
 
 http_file(
     name = "bazel_differ_linux_arm64",
-    sha256 = "7a7166aa526c3688b9fb71dfc8913c35902d4a440a32ff02db55e7b91a97f666",
-    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.5/bazel-differ-linux-arm64",
+    executable = True,
+    integrity = "sha256-eFjQ2D6auwcnycoY67qOx6NJPsI2ZKSUv1cPdaBVtOo=",
+    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.7/bazel-differ-linux-arm64",
 )
 
 http_file(
     name = "bazel_differ_linux_x86_64",
-    sha256 = "ce563301a22f41cc111f2966fc77a23e655fbe1140d93b33eb4818f06c40a8d5",
-    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.5/bazel-differ-linux-x86_64",
+    executable = True,
+    integrity = "sha256-quwSTcr6dHF0Jh7JyCR74zMsItHRcS7YD7YSAClp5CA=",
+    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.7/bazel-differ-linux-x86_64",
 )
 
 http_file(
     name = "bazel_differ_darwin_arm64",
-    sha256 = "0bcbfecfb9788764efa63922322b3c2d5a1a9c0da26b2dd8e7565ca60960e231",
-    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.5/bazel-differ-darwin-arm64",
+    executable = True,
+    integrity = "sha256-0dbJKJXHzTr0/43nJxFO+xGbCPiGYEqVirve25SXss4=",
+    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.7/bazel-differ-darwin-arm64",
 )
 
 http_file(
     name = "bazel_differ_darwin_x86_64",
-    sha256 = "a18c17f1a5e9830dfadb5ad3df02b453882fc9ec46837e9f8450c655d2cbe214",
-    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.5/bazel-differ-darwin-x86_64",
+    executable = True,
+    integrity = "sha256-wS/sbX/XgsIaX51VUOGyv7wRzKkmOUgLHzx+wg2weVE=",
+    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.7/bazel-differ-darwin-x86_64",
 )
