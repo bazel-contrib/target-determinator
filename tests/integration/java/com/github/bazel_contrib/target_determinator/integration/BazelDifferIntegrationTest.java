@@ -69,6 +69,8 @@ public class BazelDifferIntegrationTest extends Tests {
             .collect(Collectors.joining(File.pathSeparator));
     processBuilder.environment().put("PATH", amendedPath);
 
+    System.err.println("PATH has been set to " + amendedPath);
+
     try {
       if (processBuilder.start().waitFor() != 0) {
         throw new TargetComputationErrorException(
