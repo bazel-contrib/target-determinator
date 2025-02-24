@@ -94,7 +94,7 @@ public class BazelDifferIntegrationTest extends Tests {
     if (osName.contains("darwin") || osName.contains("mac")) {
       return System.getProperty("user.home") + "/Library/Caches";
     }
-    return System.getProperty("user.home") + ".cache";
+    return System.getProperty("user.home") + "/.cache";
   }
 
   // Configuration-related tests
