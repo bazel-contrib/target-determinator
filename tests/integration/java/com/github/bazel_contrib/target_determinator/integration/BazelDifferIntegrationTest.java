@@ -9,6 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.junit.Ignore;
@@ -69,7 +72,29 @@ public class BazelDifferIntegrationTest extends Tests {
             .collect(Collectors.joining(File.pathSeparator));
     processBuilder.environment().put("PATH", amendedPath);
 
+    Function<String[], Void> execute = args -> {
+      ProcessBuilder probe = new ProcessBuilder(args);
+      probe.directory(workingDirectory.toFile());
+      // Do not clean the environment so we can inherit variables passed e.g. via --test_env.
+      // Useful for CC (needed by bazel).
+      probe.environment().put("HOME", System.getProperty("user.home"));
+      probe.environment().put("PATH", amendedPath);
+
+      try {
+        var p = probe.start();
+        p.waitFor();
+
+        System.err.println("Result of " + String.join(" ", args) + " was " + new String(p.getInputStream().readAllBytes()));
+      } catch (Exception e) {
+        System.err.println("Unable to make everything work. " + e.getMessage());
+      }
+      return null;
+    };
+
     System.err.println("PATH has been set to " + amendedPath);
+
+    execute.apply(new String[]{"which", "bazel"});
+    execute.apply(new String[]{"which", "bazelisk"});
 
     try {
       if (processBuilder.start().waitFor() != 0) {
