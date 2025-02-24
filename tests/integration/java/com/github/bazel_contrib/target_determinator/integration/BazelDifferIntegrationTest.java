@@ -58,11 +58,11 @@ public class BazelDifferIntegrationTest extends Tests {
     processBuilder.environment().put("HOME", System.getProperty("user.home"));
 
     // There is a bug in `bazel-differ` where in `internal/bazel.go` they default to always using `bazel`
-    // rather than the the actual bazel instance we've requested. This is normally fine (just fine) but
-    // when we execute our own tests with `bazelisk`, the `PATH` has the version of `bazel` requested in
-    // our _own_ `.bazelversion` file at the head of the `PATH` (pulled from `bazelisk`'s own cache). To
-    // avoid this, we're going to remove items from the `PATH` that might be from bazelisk using a very
-    // sophisticated heuristic.
+    // rather than the the actual bazel instance we've requested. This is normally fine but when we
+    // execute our own tests with `bazelisk`, the `PATH` has the version of `bazel` requested in our
+    // _own_ `.bazelversion` file at the head of the `PATH` (pulled from `bazelisk`'s own cache). To
+    // avoid this, we're going to remove items from the `PATH` that might be from bazelisk using a
+    // best-effort heuristic.
     String cacheDir = getUserCacheDirectory();
     String amendedPath = Arrays.stream(System.getenv("PATH").split(File.pathSeparator))
             .filter(item -> !item.contains(cacheDir))
