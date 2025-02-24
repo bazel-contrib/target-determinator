@@ -1,6 +1,8 @@
 package com.github.bazel_contrib.target_determinator.integration;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
+
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -9,12 +11,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.eclipse.jgit.util.FileUtils;
-import org.hamcrest.CoreMatchers;
-import org.junit.After;
 import org.junit.Before;
-import org.junit.BeforeClass;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 import static junit.framework.TestCase.fail;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -22,32 +22,26 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 
 public class TargetDeterminatorSpecificFlagsTest {
-  private static TestdataRepo testdataRepo;
 
-  // Contains a new clone of the testdata repository each time a test is run.
-  private static Path testDir;
-
-  @BeforeClass
-  public static void cloneRepo() throws Exception {
-    testdataRepo = Util.cloneTestdataRepo();
-    testDir = Files.createTempDirectory("target-determinator-testdata_dir-clone");
-  }
+  @Rule
+  public TemporaryFolder rootFolder = new TemporaryFolder();
+  private TestRepo repo;
 
   @Before
-  public void createTestRepository() throws Exception {
-    testdataRepo.cloneTo(testDir);
-  }
-
-  @After
-  public void cleanupTestRepository() throws Exception {
-    FileUtils.delete(testDir.toFile(), FileUtils.RECURSIVE | FileUtils.SKIP_MISSING);
+  public void createTestRepository() throws IOException {
+    Path dir = rootFolder.newFolder().toPath();
+    repo = new TestRepo(dir).init();
   }
 
   @Test
   public void targetPatternFlagAll() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.BAZELRC_TEST_ENV);
-    Set<Label> targets =
-        getTargets(Commits.TWO_LANGUAGES_OF_TESTS, "//...");
+    repo.replaceWithContentsFrom(Commits.TWO_LANGUAGES_OF_TESTS);
+    String beforeCommit = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(Commits.BAZELRC_TEST_ENV);
+    repo.commit("After commit");
+
+    Set<Label> targets = getTargets(beforeCommit, "//...");
     Util.assertTargetsMatch(
         targets,
         Set.of("//java/example:ExampleTest", "//java/example:OtherExampleTest", "//sh:sh_test"),
@@ -57,8 +51,13 @@ public class TargetDeterminatorSpecificFlagsTest {
 
   @Test
   public void targetPatternFlagJava() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.BAZELRC_TEST_ENV);
-    Set<Label> targets = getTargets(Commits.TWO_LANGUAGES_OF_TESTS, "//java/...");
+    repo.replaceWithContentsFrom(Commits.TWO_LANGUAGES_OF_TESTS);
+    String beforeCommit = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(Commits.BAZELRC_TEST_ENV);
+    repo.commit("After commit");
+
+    Set<Label> targets = getTargets(beforeCommit, "//java/...");
     Util.assertTargetsMatch(
         targets,
         Set.of("//java/example:ExampleTest", "//java/example:OtherExampleTest"),
@@ -68,31 +67,49 @@ public class TargetDeterminatorSpecificFlagsTest {
 
   @Test
   public void targetPatternFlagOneTarget() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.BAZELRC_TEST_ENV);
-    Set<Label> targets = getTargets(Commits.TWO_LANGUAGES_OF_TESTS, "//java/example:ExampleTest");
+    repo.replaceWithContentsFrom(Commits.TWO_LANGUAGES_OF_TESTS);
+    String beforeCommit = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(Commits.BAZELRC_TEST_ENV);
+    repo.commit("After commit");
+
+    Set<Label> targets = getTargets(beforeCommit, "//java/example:ExampleTest");
     Util.assertTargetsMatch(targets, Set.of("//java/example:ExampleTest"), Set.of(), false);
   }
 
   @Test
   public void targetPatternFlagOneTargetNotAffected() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.TWO_TESTS);
-    Set<Label> targets =
-        getTargets(
-            Commits.TWO_NATIVE_TESTS_BAZEL5_4_0, "//java/example:ExampleTest");
+    repo.replaceWithContentsFrom(Commits.TWO_NATIVE_TESTS_BAZEL5_4_0);
+    String beforeCommit = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(Commits.TWO_TESTS);
+    repo.commit("After commit");
+
+    Set<Label> targets = getTargets(beforeCommit, "//java/example:ExampleTest");
     Util.assertTargetsMatch(targets, Set.of("//java/example:ExampleTest"), Set.of(), false);
   }
 
   @Test
   public void targetPatternFlagQueryBeforeWasError() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.ONE_TEST);
-    Set<Label> targets = getTargets(Commits.NO_TARGETS, "//java/...");
+    repo.replaceWithContentsFrom(Commits.NO_TARGETS);
+    String beforeCommit = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(Commits.ONE_TEST);
+    repo.commit("After commit");
+
+    Set<Label> targets = getTargets(beforeCommit, "//java/...");
     Util.assertTargetsMatch(targets, Set.of("//java/example:ExampleTest"), Set.of(), false);
   }
 
   @Test
   public void targetPatternFlagQueryBeforeWasErrorVerbose() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.ONE_TEST);
-    String output = getOutput(Commits.NO_TARGETS, "//java/...", false, true, List.of("--verbose"));
+    repo.replaceWithContentsFrom(Commits.NO_TARGETS);
+    String beforeCommit = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(Commits.ONE_TEST);
+    repo.commit("After commit");
+
+    String output = getOutput(beforeCommit, "//java/...", false, true, List.of("--verbose"));
     // This isn't great output, and we shouldn't worry about changing its format in the future,
     // but this test is to ensure we return a result indicating "the query before was bad" rather
     // than "this target didn't exist before".
@@ -101,38 +118,50 @@ public class TargetDeterminatorSpecificFlagsTest {
 
   @Test
   public void targetPatternFlagQueryBeforeWasErrorWhenFatal() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.ONE_TEST);
+    repo.replaceWithContentsFrom(Commits.NO_TARGETS);
+    String beforeCommit = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(Commits.ONE_TEST);
+    repo.commit("After commit");
     try {
-      String output = getOutput(Commits.NO_TARGETS, "//java/...", false, true, List.of("--before-query-error-behavior=fatal"));
+      String output = getOutput(beforeCommit, "//java/...", false, true, List.of("--before-query-error-behavior=fatal"));
       fail(String.format("Expected exception but got successful output: %s", output));
     } catch (TargetComputationErrorException e) {
-      assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStdout(), equalTo("Target Determinator invocation Error\n"));
       assertThat(e.getStderr(), containsString("failed to query at revision 'before'"));
     }
   }
 
   @Test
   public void failForUncleanRepositoryWithEnforceClean() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.HAS_JVM_FLAGS);
+    repo.replaceWithContentsFrom(Commits.TWO_TESTS);
+    String beforeCommit = repo.commit("Before commit");
 
-    Files.createFile(testDir.resolve("untracked-file"));
+    repo.replaceWithContentsFrom(Commits.HAS_JVM_FLAGS);
+    repo.commit("After commit");
+
+    Files.createFile(repo.getDir().resolve("untracked-file"));
 
     try {
-      getTargets(Commits.TWO_TESTS, "//...", true, true);
+      getTargets(beforeCommit, "//...", true, true);
       fail("Expected target-determinator command to fail but it succeeded");
     } catch (TargetComputationErrorException e) {
-      assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStdout(), equalTo("Target Determinator invocation Error\n"));
     }
   }
 
   @Test
   public void ignoresIgnoredFile() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.TWO_TESTS_WITH_GITIGNORE);
+    repo.replaceWithContentsFrom(Commits.ONE_TEST_WITH_GITIGNORE);
+    String beforeCommit = repo.commit("Before commit");
 
-    Path ignoredFile = testDir.resolve("ignored-file");
+    repo.replaceWithContentsFrom(Commits.TWO_TESTS_WITH_GITIGNORE);
+    repo.commit("After commit");
+
+    Path ignoredFile = repo.getDir().resolve("ignored-file");
     Files.createFile(ignoredFile);
 
-    Set<Label> targets = getTargets(Commits.ONE_TEST_WITH_GITIGNORE, "//...", true, true);
+    Set<Label> targets = getTargets(beforeCommit, "//...", true, true);
     Util.assertTargetsMatch(targets, Set.of("//java/example:OtherExampleTest"), Set.of(), false);
 
     assertThat("expected ignored file to still be present after invocation", ignoredFile.toFile().exists());
@@ -140,56 +169,86 @@ public class TargetDeterminatorSpecificFlagsTest {
 
   @Test
   public void failsIfChangingCommitsCausesAnIgnoredFileToBecomeUntracked() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.TWO_TESTS_WITH_GITIGNORE);
+    repo.replaceWithContentsFrom(Commits.ONE_TEST);
+    String beforeCommit = repo.commit("Before commit");
 
-    Path ignoredFile = testDir.resolve("ignored-file");
+    repo.replaceWithContentsFrom(Commits.TWO_TESTS_WITH_GITIGNORE);
+    repo.commit("After commit");
+
+    Path ignoredFile = repo.getDir().resolve("ignored-file");
     Files.createFile(ignoredFile);
 
     try {
-      getTargets(Commits.ONE_TEST, "//...", true, true);
+      getTargets(beforeCommit, "//...", true, true);
       fail("Expected target-determinator command to fail but it succeeded");
     } catch (TargetComputationErrorException e) {
-      assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStdout(), equalTo("Target Determinator invocation Error\n"));
       assertThat(e.getStderr(), containsString("repository was not clean after checking out revision 'before'"));
     }
   }
 
   @Test
   public void failForUncleanSubmoduleWithEnforceClean() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.SUBMODULE_CHANGE_DIRECTORY);
+    Path submodulePath = rootFolder.newFolder().toPath();
+    TestRepo submodule = new TestRepo(submodulePath).init();
+    submodule.replaceWithContentsFrom(Commits.EMPTY_SUBMODULE);
+    submodule.commit("Initial commit");
 
-    Files.createFile(testDir.resolve("demo-submodule-2").resolve("untracked-file"));
+    repo.replaceWithContentsFrom(Commits.SIMPLE_JAVA_LIBRARY_TARGETS);
+    repo.commit("Before commit");
+
+    TestRepo submoduleWithinRepo = repo.addSubModule(submodule, "demo-submodule");
+    repo.commit("Add a submodule");
+
+    submodule.replaceWithContentsFrom(Commits.ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY);
+    submodule.commit("Add dependent of simple java library");
+
+    submoduleWithinRepo.pull();
+
+    String beforeCommit = repo.commit("Add dependent target in submodule", "demo-submodule");
+
+    repo.move("demo-submodule", "demo-submodule-2");
+    repo.commit("Move demo-submodule to demo-submodule-2");
+
+    Files.createFile(repo.getDir().resolve("demo-submodule-2").resolve("untracked-file"));
 
     try {
-      getTargets(Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
-          "//...", true, true);
+      getTargets(beforeCommit, "//...", true, true);
       fail("Expected target-determinator command to fail but it succeeded");
     } catch (TargetComputationErrorException e) {
-      assertThat(e.getStdout(), CoreMatchers.equalTo("Target Determinator invocation Error\n"));
+      assertThat(e.getStdout(), equalTo("Target Determinator invocation Error\n"));
     }
   }
 
   @Test
   public void testWorktreeCreation() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.TWO_TESTS);
-    // Make repository unclean so that a worktree gets created.
-    Files.createFile(testDir.resolve("untracked-file"));
-    getTargets(Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
-        "//...", false, false);
+    repo.replaceWithContentsFrom(Commits.ONE_TEST);
+    String beforeCommit = repo.commit("Before commit");
 
-    Path worktreePath = TargetDeterminator.getWorktreePath(testDir);
+    repo.replaceWithContentsFrom(Commits.TWO_TESTS);
+    repo.commit("After commit");
+
+    // Make repository unclean so that a worktree gets created
+    Files.createFile(repo.getDir().resolve("untracked-file"));
+
+    getTargets(beforeCommit, "//...", false, false);
+
+    Path worktreePath = TargetDeterminator.getWorktreePath(repo.getDir());
     assertThat("Expected cached git worktree to be present", Files.exists(worktreePath.resolve(".git")));
 
-    getTargets(Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
-        "//...", false, true);
+    getTargets(beforeCommit, "//...", false, true);
     assertThat("Expected cached git worktree to be absent", !Files.exists(worktreePath.resolve(".git")));
-
   }
 
   @Test
   public void changedConfigurationVerbose() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.BAZELRC_AFFECTING_JAVA);
-    String output = getOutput(Commits.TWO_LANGUAGES_OF_TESTS, "//java/example:ExampleTest", false, true, List.of("--verbose"));
+    repo.replaceWithContentsFrom(Commits.TWO_LANGUAGES_OF_TESTS);
+    String beforeCommit = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(Commits.BAZELRC_AFFECTING_JAVA);
+    repo.commit("After commit");
+
+    String output = getOutput(beforeCommit, "//java/example:ExampleTest", false, true, List.of("--verbose"));
     // This isn't great output, and we shouldn't worry about changing its format in the future,
     // but this test is to ensure we return a result including a hint as to what changed the
     // configuration.
@@ -198,8 +257,13 @@ public class TargetDeterminatorSpecificFlagsTest {
 
   @Test
   public void startupOptsIgnoringBazelrc() throws Exception {
-    TestdataRepo.gitCheckout(testDir, Commits.BAZELRC_TEST_ENV);
-    Set<Label> targets = getTargets(Commits.TWO_LANGUAGES_OF_TESTS, "//...", false, true, List.of("--bazel-startup-opts=--noworkspace_rc"));
+    repo.replaceWithContentsFrom(Commits.TWO_LANGUAGES_OF_TESTS);
+    String beforeCommit = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(Commits.BAZELRC_TEST_ENV);
+    repo.commit("After commit");
+
+    Set<Label> targets = getTargets(beforeCommit, "//...", false, true, List.of("--bazel-startup-opts=--noworkspace_rc"));
     Util.assertTargetsMatch(targets, Set.of(), Set.of(), false);
   }
 
@@ -220,7 +284,7 @@ public class TargetDeterminatorSpecificFlagsTest {
   private String getOutput(String commitBefore, String targets, boolean enforceClean, boolean deleteCachedWorktree, List<String> flags) throws Exception {
     final List<String> args = Stream.concat(
         Stream.of("--working-directory",
-            testDir.toString(),
+            repo.getDir().toString(),
             "--bazel", "bazelisk",
             "--targets", targets
         ),
@@ -233,6 +297,6 @@ public class TargetDeterminatorSpecificFlagsTest {
       args.add("--delete-cached-worktree");
     }
     args.add(commitBefore);
-    return TargetDeterminator.getOutput(testDir, args.toArray(new String[0]));
+    return TargetDeterminator.getOutput(repo.getDir(), args.toArray(new String[0]));
   }
 }

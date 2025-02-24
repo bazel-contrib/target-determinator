@@ -7,3 +7,5 @@ build --tool_java_runtime_version=remotejdk_11
 
 build --verbose_failures
 build --test_output=errors
+
+build --deleted_packages=tests/integration/java/com/github/bazel_contrib/target_determinator/integration/testdata

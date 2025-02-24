@@ -92,12 +92,12 @@ public abstract class Tests {
 
   @Test
   public void zeroToOneTarget_native() throws Exception {
-    doTest(Commits.NO_TARGETS, Commits.ONE_TEST, Set.of("//java/example:ExampleTest"));
+    runTest("no_targets", "one_test", Set.of("//java/example:ExampleTest"));
   }
 
   @Test
   public void addedTarget_native() throws Exception {
-    doTest(Commits.ONE_TEST, Commits.TWO_TESTS, Set.of("//java/example:OtherExampleTest"));
+    runTest("one_test", "two_tests", Set.of("//java/example:OtherExampleTest"));
   }
 
   @Test
@@ -611,6 +611,26 @@ public abstract class Tests {
     }
   }
 
+  public void runTest(String beforeTestDataDirName, String afterTestDataDirName, Set<String> expectedTargets) throws TargetComputationErrorException {
+    TestRepo repo = new TestRepo(testDir).init();
+    repo.replaceWithContentsFrom(beforeTestDataDirName);
+    String commitBefore = repo.commit("Before commit");
+
+    repo.replaceWithContentsFrom(afterTestDataDirName);
+    String commitAfter = repo.commit("After commit");
+
+    Set<Label> targets = getTargets(commitBefore, commitAfter);
+    Util.assertTargetsMatch(
+            targets, expectedTargets, Set.of(), allowOverBuilds);
+
+    if (supportsIgnoredUnaddedFiles()) {
+      assertThat(
+              "Ignored files should still be around after running the target determination executable"
+                      + " but wasn't",
+              testDir.resolve(ignoredDirectoryName).resolve(ignoredFileName).toFile().exists());
+    }
+  }
+
   private void gitCheckoutBranch(final String branch) throws Exception {
     TestdataRepo.gitCheckoutBranch(testDir, branch);
   }
@@ -643,28 +663,28 @@ public abstract class Tests {
 
 class Commits {
 
-  public static final String NO_TARGETS = "d2862de5e63c8be0866056e6307049c159fb9e47";
-  public static final String ONE_TEST = "65dfed228e75a7f4ad361fe65512a1e58ef83b1c";
+  public static final String NO_TARGETS = "no_targets";
+  public static final String EMPTY_SUBMODULE = "empty_submodule";
+  public static final String ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY = "add_dependent_on_simple_java_library";
+  public static final String ONE_TEST = "one_test";
   public static final String ONE_TEST_BAZEL7_0_0 = "30dfd560934f45b8af30601f9d4efe1d5726de5c";
-  public static final String TWO_TESTS = "bd1f7781e0d5ee66f3235a1adb8f656d5ea35c2d";
-  public static final String HAS_JVM_FLAGS = "50609b7d1260b449ceed57718165981986880d97";
+  public static final String TWO_TESTS = "two_tests";
+  public static final String HAS_JVM_FLAGS = "has_jvm_flags";
   public static final String EXPLICIT_DEFAULT_VALUE = "34213eb339cbb5d1544c83c1aa8c19528c147e0d";
-  public static final String TWO_NATIVE_TESTS_BAZEL5_4_0 = "97637aedbfdf0be9c9d440c56ddc10c842fd9e4a";
+  public static final String TWO_NATIVE_TESTS_BAZEL5_4_0 = "two_native_tests_bazel_5_4_0";
   public static final String TWO_NATIVE_TESTS_BAZEL6_0_0 = "e82404bbedebb800fed8053dfc4f2ebdbcdebcd6";
   public static final String MODIFIED_TEST_SRC = "4a0e589ac8d0d33e8e6109b07d0d60a833261eb3";
-  public static final String TWO_LANGUAGES_OF_TESTS = "805a14f65edd9e3d42b6ec8524397a269065df49";
-  public static final String BAZELRC_TEST_ENV = "9afe362266b9a7cd0d9dd63d16bdf9849db71199";
-  public static final String BAZELRC_AFFECTING_JAVA = "b1f9504dcba4e0fdc2cf344048307fdd7ac9baec";
-  public static final String SIMPLE_TARGETS_BAZEL4_0_0 = "877b2f679e65595e895a1356994344bf4b4ce45f";
+  public static final String TWO_LANGUAGES_OF_TESTS = "two_languages_of_tests";
+  public static final String BAZELRC_TEST_ENV = "bazelrc_test_env";
+  public static final String BAZELRC_AFFECTING_JAVA = "bazelrc_affecting_java";
   public static final String SIMPLE_TARGETS_BAZEL5_4_0 = "7cc16e4080aa7b20fa80c2e4e1dacb353ef09275";
   public static final String SIMPLE_TARGETS_BAZEL6_0_0 = "7efcdd39046bd3d0fdd9c9ab34259ce8894c5cfb";
   public static final String ADD_OPTIONAL_PRESENT_EMPTY_BAZELRC =
       "50f6d42a9fa62760ec0e2bb22a51a5e68ed87813";
   public static final String SIMPLE_JAVA_LIBRARY_RULE = "3ced8e757bbdb853553c62754ad68bce3be9033f";
   public static final String SIMPLE_JAVA_LIBRARY_TARGETS =
-      "a96d8a14615e972f6a833ba70bb0a9a806e781e0";
-  public static final String SIMPLE_JAVA_LIBRARY_AND_JAVA_TESTS =
-      "a82f3ba70787617a78c60c2c460bf954c30be4a0";
+      "simple_java_library_and_java_tests";
+  public static final String SIMPLE_JAVA_LIBRARY_AND_JAVA_TESTS = "simple_java_library_and_java_tests";
   public static final String CHANGE_TRANSITIVE_FILE = "e93ab7f1081c2d25b54e325f402875230cb37bd7";
   public static final String CHANGE_TRANSITIVE_FILE_BAZEL4_0_0 = "c90dce5b2b6c888ba08b8cdac5eb60b031ff447f";
   public static final String TWO_LANGUAGES_OPTIONAL_MISSING_TRY_IMPORT =
@@ -710,8 +730,8 @@ class Commits {
       "c0ef0f9805e65817299eb7a794ed66655c0dd5aa";
   public static final String REDUCE_DEPENDENCY_VISIBILITY =
       "396dae111684b893ec6e04b2f6e86ed603a01082";
-  public static final String ONE_TEST_WITH_GITIGNORE = "51bf9b729dddf35694019c19b5dbffb36bf83af4";
-  public static final String TWO_TESTS_WITH_GITIGNORE = "55845a3a08525f2aa66c3d7a2115dad684c46995";
+  public static final String ONE_TEST_WITH_GITIGNORE = "one_test_with_gitignore";
+  public static final String TWO_TESTS_WITH_GITIGNORE = "two_tests_with_gitignore";
   public static final String SUBMODULE_ADD_TRIVIAL_SUBMODULE =
       "b88ddcfe3da63c8308ce6d3274dd424d2c7b211a";
   public static final String SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY =
