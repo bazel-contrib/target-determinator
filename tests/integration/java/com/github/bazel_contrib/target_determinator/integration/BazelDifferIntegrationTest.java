@@ -65,7 +65,7 @@ public class BazelDifferIntegrationTest extends Tests {
     // best-effort heuristic.
     String cacheDir = getUserCacheDirectory();
     String amendedPath = Arrays.stream(System.getenv("PATH").split(File.pathSeparator))
-            .filter(item -> !item.contains(cacheDir))
+            .filter(item -> !item.contains(cacheDir + File.separator + "bazelisk"))
             .collect(Collectors.joining(File.pathSeparator));
     processBuilder.environment().put("PATH", amendedPath);
 
