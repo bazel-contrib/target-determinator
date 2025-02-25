@@ -30,7 +30,7 @@ public class TargetDeterminatorSpecificFlagsTest {
   @Before
   public void createTestRepository() throws IOException {
     Path dir = rootFolder.newFolder().toPath();
-    repo = new TestRepo(dir).init();
+    repo = TestRepo.create(dir);
   }
 
   @Test
@@ -190,7 +190,7 @@ public class TargetDeterminatorSpecificFlagsTest {
   @Test
   public void failForUncleanSubmoduleWithEnforceClean() throws Exception {
     Path submodulePath = rootFolder.newFolder().toPath();
-    TestRepo submodule = new TestRepo(submodulePath).init();
+    TestRepo submodule = TestRepo.create(submodulePath);
     submodule.replaceWithContentsFrom(Commits.EMPTY_SUBMODULE);
     submodule.commit("Initial commit");
 

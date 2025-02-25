@@ -1,0 +1,10 @@
+java_test(
+    name = "ExampleTest",
+    srcs = ["ExampleTest.java"],
+    flaky = False,
+)
+
+java_test(
+    name = "OtherExampleTest",
+    srcs = ["OtherExampleTest.java"],
+)

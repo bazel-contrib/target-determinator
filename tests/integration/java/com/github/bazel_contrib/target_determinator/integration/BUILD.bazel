@@ -70,6 +70,7 @@ java_library(
 java_library(
     name = "util",
     srcs = [
+        "Commits.java",
         "TargetComputationErrorException.java",
         "TargetDeterminator.java",
         "TestdataRepo.java",

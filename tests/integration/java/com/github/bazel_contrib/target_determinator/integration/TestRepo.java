@@ -3,11 +3,11 @@ package com.github.bazel_contrib.target_determinator.integration;
 import com.google.devtools.build.runfiles.Runfiles;
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.PullResult;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,10 +33,34 @@ import static org.junit.Assert.fail;
 public class TestRepo {
 
     private final Path dir;
-    private Git gitRepo;
+    private final Git gitRepo;
 
-    public TestRepo(Path path) {
+    private TestRepo(Path path, Git gitRepo) {
         this.dir = Objects.requireNonNull(path);
+        this.gitRepo = Objects.requireNonNull(gitRepo);
+    }
+
+    public static TestRepo create(Path dir) {
+        assertTrue(Files.exists(dir));
+
+        try {
+            Git gitRepo = getGitRepo(dir);
+
+            return new TestRepo(dir, gitRepo);
+        } catch (GitAPIException | IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static Git getGitRepo(Path dir) throws GitAPIException, IOException {
+        if (Files.exists(dir.resolve(".git"))) {
+            Repository repo = new FileRepositoryBuilder()
+                    .setGitDir(dir.resolve(".git").toFile())
+                    .setInitialBranch("main")
+                    .build();
+            return new Git(repo);
+        }
+        return Git.init().setDirectory(dir.toFile()).setInitialBranch("main").call();
     }
 
     public Path getDir() {
@@ -45,16 +69,6 @@ public class TestRepo {
 
     public String getUri() {
         return dir.toUri().toString();
-    }
-
-    public TestRepo init() {
-        try {
-            this.gitRepo = Git.init().setDirectory(dir.toFile()).setInitialBranch("main").call();
-        } catch (GitAPIException e) {
-            throw new RuntimeException(e);
-        }
-
-        return this;
     }
 
     public String commit(String message, String... additionalPaths) {
@@ -92,7 +106,15 @@ public class TestRepo {
             }
 
             // First delete everything other than the `.git` directory
-            deleteExcept(p -> !p.startsWith(".git"));
+            deleteExcept(p -> {
+                // We want to leave the entire `.git` directory alone
+                for (Path segment : p) {
+                    if (segment.toString().equals(".git")) {
+                        return false;
+                    }
+                }
+                return true;
+            });
             copyRecursively(directory, dir);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -146,9 +168,7 @@ public class TestRepo {
                     .setPath(pathInLocalRepo)
                     .call();
 
-            var testRepo = new TestRepo(dir.resolve(pathInLocalRepo));
-            testRepo.gitRepo = new Git(repo);
-            return testRepo;
+            return new TestRepo(dir.resolve(pathInLocalRepo), new Git(repo));
         } catch (GitAPIException e) {
             throw new RuntimeException(e);
         }
