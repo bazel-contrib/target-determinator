@@ -20,8 +20,7 @@ class Commits {
     public static final String SIMPLE_TARGETS_BAZEL6_0_0 = "simple_targets_bazel_6_0_0";
     public static final String ADD_OPTIONAL_PRESENT_EMPTY_BAZELRC = "add_optional_present_empty_bazelrc";
     public static final String SIMPLE_JAVA_LIBRARY_RULE = "simple_java_library_rule";
-    public static final String SIMPLE_JAVA_LIBRARY_TARGETS =
-            "simple_java_library_and_java_tests";
+    public static final String SIMPLE_JAVA_LIBRARY_TARGETS = "simple_java_library_targets";
     public static final String SIMPLE_JAVA_LIBRARY_AND_JAVA_TESTS = "simple_java_library_and_java_tests";
     public static final String CHANGE_TRANSITIVE_FILE = "change_transitive_file";
     public static final String CHANGE_TRANSITIVE_FILE_BAZEL4_0_0 = "change_transitive_file_bazel_4_0_0";
@@ -42,13 +41,13 @@ class Commits {
     public static final String REFACTORED_WORKSPACE_INDIRECTLY =
             "refactored_workspace_indirectly";
     public static final String PATHOLOGICAL_RULES_SINGLE_TARGET =
-            "d3fa4261ba55826781c33a1e6814de7effa8f48f";
+            "pathological_rules_single_target";
     public static final String PATHOLOGICAL_RULES_TWO_TARGETS =
-            "436d3472cd7f3c8a73cb23e0d85e86aa2eac0e0d";
+            "pathological_rules_two_targets";
     public static final String PATHOLOGICAL_RULES_THREE_TARGETS =
-            "5987e2a10abef4087ae472e6171cda506190ca95";
+            "pathological_rules_three_targets";
     public static final String PATHOLOGICAL_RULES_FIVE_TARGETS =
-            "8e5e5b4b1ac7eaf02ddafe9f551a1f6eda5b2191";
+            "pathological_rules_five_targets";
     public static final String CHANGE_ATTRIBUTES_VIA_INDIRECTION =
             "change_attributes_via_indirection";
     public static final String HAS_GLOBS = "has_globs";

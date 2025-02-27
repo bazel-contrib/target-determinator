@@ -73,7 +73,6 @@ java_library(
         "Commits.java",
         "TargetComputationErrorException.java",
         "TargetDeterminator.java",
-        "TestdataRepo.java",
         "TestRepo.java",
         "Util.java",
     ],

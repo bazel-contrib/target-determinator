@@ -2,6 +2,7 @@ package com.github.bazel_contrib.target_determinator.integration;
 
 import static junit.framework.TestCase.fail;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assume.assumeFalse;
 
 import com.github.bazel_contrib.target_determinator.label.Label;
@@ -307,30 +308,51 @@ public abstract class Tests {
     doTest(Commits.ADD_SIMPLE_PACKAGE_RULE, Commits.REFACTORED_WORKSPACE_INDIRECTLY, Set.of());
   }
 
-//  @Test
-//  public void changingMacroExpansionBasedOnFileExistence() throws Exception {
-//    // Add a second target - changes the definition of the first target, so it should re-run:
-//    doTest(
-//        Commits.PATHOLOGICAL_RULES_SINGLE_TARGET,
-//        Commits.PATHOLOGICAL_RULES_TWO_TARGETS,
-//        Set.of("//weird:length_of_compute_lengths.0", "//weird:length_of_compute_lengths.2"));
-//    // Revert...
-//    doTest(
-//        Commits.PATHOLOGICAL_RULES_TWO_TARGETS,
-//        Commits.PATHOLOGICAL_RULES_SINGLE_TARGET,
-//        Set.of("//weird:length_of_compute_lengths.0"));
-//    // Add a third target - first target goes back to normal, so doesn't need re-testing compared to
-//    // when there was just one:
-//    doTest(
-//        Commits.PATHOLOGICAL_RULES_SINGLE_TARGET,
-//        Commits.PATHOLOGICAL_RULES_THREE_TARGETS,
-//        Set.of("//weird:length_of_compute_lengths.2", "//weird:length_of_compute_lengths.3"));
-//    // Add targets 4 and 5 - the previous rules no longer exist, but a new one does.
-//    doTest(
-//        Commits.PATHOLOGICAL_RULES_SINGLE_TARGET,
-//        Commits.PATHOLOGICAL_RULES_FIVE_TARGETS,
-//        Set.of("//weird:pathological"));
-//  }
+  @Test
+  public void changingMacroExpansionBasedOnFileExistence() throws Exception {
+    TestRepo repo = TestRepo.create(testDir);
+
+    repo.replaceWithContentsFrom(Commits.PATHOLOGICAL_RULES_SINGLE_TARGET);
+    String pathologicalSingleTarget = repo.commit("One test");
+
+    repo.replaceWithContentsFrom(Commits.PATHOLOGICAL_RULES_TWO_TARGETS);
+    String pathologicalTwoTargets = repo.commit("Two tests");
+
+    // Add a second target - changes the definition of the first target, so it should re-run:
+    assertTargetDeterminatorRun(
+            pathologicalSingleTarget,
+            pathologicalTwoTargets,
+            Set.of("//weird:length_of_compute_lengths.0", "//weird:length_of_compute_lengths.2"),
+            Set.of());
+
+    // Revert
+    repo.replaceWithContentsFrom(Commits.PATHOLOGICAL_RULES_SINGLE_TARGET);
+    String revertedSingleTarget = repo.commit("Reverting");
+    assertTargetDeterminatorRun(
+            pathologicalTwoTargets,
+            revertedSingleTarget,
+            Set.of("//weird:length_of_compute_lengths.0"),
+            Set.of());
+
+    // Add a third target - first target goes back to normal, so doesn't need re-testing compared to
+    // when there was just one:
+    repo.replaceWithContentsFrom(Commits.PATHOLOGICAL_RULES_THREE_TARGETS);
+    String pathologicalThreeTargets = repo.commit("Adding a third target");
+    assertTargetDeterminatorRun(
+        revertedSingleTarget,
+        pathologicalThreeTargets,
+        Set.of("//weird:length_of_compute_lengths.2", "//weird:length_of_compute_lengths.3"),
+        Set.of());
+
+    // Add targets 4 and 5 - the previous rules no longer exist, but a new one does.
+    repo.replaceWithContentsFrom(Commits.PATHOLOGICAL_RULES_FIVE_TARGETS);
+    String pathologicalFiveTargets = repo.commit("Add targets 4 and 5");
+    assertTargetDeterminatorRun(
+        revertedSingleTarget,
+        pathologicalFiveTargets,
+        Set.of("//weird:pathological"),
+        Set.of());
+  }
 
   @Test
   public void changingFileLoadedByWorkspaceTriggersTargets() throws Exception {
@@ -476,20 +498,36 @@ public abstract class Tests {
     repo.replaceWithContentsFrom(Commits.TWO_TESTS);
     repo.commit("After commit");
 
-    doTest("HEAD^", "HEAD", Set.of("//java/example:OtherExampleTest"));
+    assertTargetDeterminatorRun(
+            "HEAD^",
+            "HEAD",
+            Set.of("//java/example:OtherExampleTest"),
+            Set.of());
   }
-//
-//  @Test
-//  public void testBranchRevision() throws Exception {
-//    gitCheckout(Commits.TWO_TESTS);
-//    gitCheckoutBranch(Commits.TWO_TESTS_BRANCH);
-//    doTest(Commits.ONE_TEST, Commits.TWO_TESTS_BRANCH, Set.of("//java/example:OtherExampleTest"));
-//    assertEquals(
-//        "Initial branch should be checked out after running the target determinator",
-//        Commits.TWO_TESTS_BRANCH,
-//        gitBranch());
-//  }
-//
+
+  @Test
+  public void testBranchRevision() throws Exception {
+    TestRepo repo = TestRepo.create(testDir);
+    repo.replaceWithContentsFrom(Commits.ONE_TEST);
+    String oneTest = repo.commit("One test");
+
+    repo.replaceWithContentsFrom(Commits.TWO_TESTS);
+    repo.commit("Two tests");
+
+    String branchCommit = repo.createBranch(Commits.TWO_TESTS_BRANCH);
+
+    assertTargetDeterminatorRun(
+            oneTest,
+            branchCommit,
+            Set.of("//java/example:OtherExampleTest"),
+            Set.of());
+
+    assertEquals(
+        "Initial branch should be checked out after running the target determinator",
+        Commits.TWO_TESTS_BRANCH,
+        repo.getBranch());
+  }
+
   @Test
   public void testMinimumSupportedBazelVersion() throws Exception {
     doTest(
@@ -556,6 +594,7 @@ public abstract class Tests {
     if (isLinux()) {
       after = Commits.CHANGED_NONLINUX_DEP;
       changedDepTarget = "//java/example/simple:simple_dep";
+
     }
 
     doTest(Commits.SELECT_TARGET, after, Set.of(changedDepTarget));
@@ -628,17 +667,9 @@ public abstract class Tests {
     }
   }
 
-  private void gitCheckoutBranch(String branch) throws Exception {
-    TestdataRepo.gitCheckoutBranch(testDir, branch);
-  }
-
   private void gitCheckout(String commitName) throws Exception {
     TestRepo repo = TestRepo.create(testDir);
     repo.replaceWithContentsFrom(commitName);
-  }
-
-  private String gitBranch() throws Exception {
-    return TestdataRepo.gitBranch(testDir);
   }
 
   private boolean isLinux() {

@@ -201,4 +201,22 @@ public class TestRepo {
             throw new UncheckedIOException(e);
         }
     }
+
+    public String createBranch(String branchName) {
+        try {
+            gitRepo.checkout().setCreateBranch(true).setName(branchName).call();
+
+            return getBranch();
+        } catch (GitAPIException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public String getBranch() {
+        try {
+            return gitRepo.getRepository().getBranch();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 }
