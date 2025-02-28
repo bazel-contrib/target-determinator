@@ -409,11 +409,13 @@ func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common
 		if err != nil {
 			return "", fmt.Errorf("failed to create or reuse worktree: %w", err)
 		}
+
 		context.WorkspacePath = newRepositoryPath
 	}
 
-	gitCmd := exec.Command("git", "submodule", "update", "--init", "--recursive")
+	gitCmd := exec.Command("git", "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
 	gitCmd.Dir = context.WorkspacePath
+
 	if output, err := gitCmd.CombinedOutput(); err != nil {
 		return newRepositoryPath, fmt.Errorf("failed to update submodules during checkout %s: %w. Output: %v", rev, err, string(output))
 	}

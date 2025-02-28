@@ -105,12 +105,24 @@ public abstract class Tests {
   public void changingUnimportantPermissionDoesNotTrigger_native() throws Exception {
     assumeFalse(isWindows());
 
-    gitCheckout(Commits.EXPLICIT_DEFAULT_VALUE);
+    TestRepo repo = TestRepo.create(testDir);
+    repo.replaceWithContentsFrom(Commits.EXPLICIT_DEFAULT_VALUE);
+    repo.commit("Initial commit");
+
+    repo.replaceWithContentsFrom(Commits.TWO_TESTS);
+    String twoTests = repo.commit("Two tests");
+
+    repo.replaceWithContentsFrom(Commits.EXPLICIT_DEFAULT_VALUE);
+    String defaultValue = repo.commit("Explicit default value");
+
     Path srcFile = Path.of("java/example/ExampleTest.java");
     changeFileMode(srcFile, "r--r--r--");
-    doTest(Commits.TWO_TESTS, Commits.EXPLICIT_DEFAULT_VALUE, Set.of());
+
+    assertTargetDeterminatorRun(twoTests, defaultValue, Set.of(), Set.of());
+
     changeFileMode(srcFile, "rw-rw-rw-");
-    doTest(Commits.TWO_TESTS, Commits.EXPLICIT_DEFAULT_VALUE, Set.of());
+
+    assertTargetDeterminatorRun(twoTests, defaultValue, Set.of(), Set.of());
   }
 
   @Test
@@ -423,46 +435,113 @@ public abstract class Tests {
     doTest(Commits.TWO_TESTS, Commits.HAS_JVM_FLAGS, Set.of("//java/example:ExampleTest"));
   }
 
-//  @Test
-//  public void succeedForUncleanIgnoredFiles() throws Exception {
-//    Path ignoredFile = testDir.resolve("ignored-file");
-//    Files.createFile(ignoredFile);
-//
-//    doTest(
-//        Commits.ONE_TEST,
-//        Commits.TWO_TESTS_WITH_GITIGNORE,
-//        Set.of("//java/example:OtherExampleTest"));
-//    assertThat(
-//        "expected ignored file to still be present after invocation",
-//        ignoredFile.toFile().exists());
-//  }
-//
-//  @Test
-//  public void succeedForUncleanSubmodule() throws Exception {
-//    gitCheckout(Commits.SUBMODULE_CHANGE_DIRECTORY);
-//
-//    Files.createFile(testDir.resolve("demo-submodule-2").resolve("untracked-file"));
-//
-//    doTest(Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
-//            Commits.SUBMODULE_CHANGE_DIRECTORY,
-//            Set.of("//demo-submodule-2:submodule_simple"));
-//  }
-//
-//  @Test
-//  public void addTrivialSubmodule() throws Exception {
-//    doTest(Commits.SIMPLE_JAVA_LIBRARY_TARGETS, Commits.SUBMODULE_ADD_TRIVIAL_SUBMODULE, Set.of());
-//    assertThat(
-//        "The submodule should now be present with its README.md but isn't",
-//        Files.exists(testDir.resolve("demo-submodule").resolve("README.md")));
-//  }
-//
-//  @Test
-//  public void addDependentTargetInSubmodule() throws Exception {
-//    doTest(
-//        Commits.SUBMODULE_ADD_TRIVIAL_SUBMODULE,
-//        Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
-//        Set.of("//demo-submodule:submodule_simple"));
-//  }
+  @Test
+  public void succeedForUncleanIgnoredFiles() throws Exception {
+    TestRepo repo = TestRepo.create(testDir);
+
+    repo.replaceWithContentsFrom(Commits.ONE_TEST);
+    String oneTest = repo.commit("One test");
+
+    repo.replaceWithContentsFrom(Commits.TWO_TESTS_WITH_GITIGNORE);
+    String twoTests = repo.commit("Two tests");
+
+    Path ignoredFile = testDir.resolve("ignored-file");
+    Files.createFile(ignoredFile);
+
+    assertTargetDeterminatorRun(
+        oneTest,
+        twoTests,
+        Set.of("//java/example:OtherExampleTest"),
+        Set.of());
+
+    assertThat(
+        "expected ignored file to still be present after invocation",
+        ignoredFile.toFile().exists());
+  }
+
+  @Test
+  public void succeedForUncleanSubmodule() throws Exception {
+    TestRepo repo = TestRepo.create(testDir);
+
+    repo.replaceWithContentsFrom(Commits.SIMPLE_JAVA_LIBRARY_TARGETS);
+    repo.commit("Initial commit");
+
+    TestRepo submodule = TestRepo.create(tempDir.newFolder("submodule").toPath());
+    submodule.replaceWithContentsFrom(Commits.EMPTY_SUBMODULE);
+    submodule.commit("Create empty submodule");
+
+    TestRepo submoduleWithinRepo = repo.addSubModule(submodule, "demo-submodule");
+
+    // Update the submodule
+    submodule.replaceWithContentsFrom(Commits.ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY);
+    submodule.commit("Update submodule");
+
+    // Now update the reference in the main repo
+    submoduleWithinRepo.pull();
+    String beforeCommit = repo.commit("Add dependent targets in submodule", "demo-submodule");
+
+    repo.move("demo-submodule", "demo-submodule-2");
+    String afterCommit = repo.commit("Move demo-submodule to demo-submodule-2");
+
+    Files.createFile(repo.getDir().resolve("demo-submodule-2").resolve("untracked-file"));
+
+    assertTargetDeterminatorRun(
+            beforeCommit,
+            afterCommit,
+            Set.of("//demo-submodule-2:submodule_simple"),
+            Set.of());
+  }
+
+  @Test
+  public void addTrivialSubmodule() throws Exception {
+    TestRepo repo = TestRepo.create(testDir);
+
+    repo.replaceWithContentsFrom(Commits.SIMPLE_JAVA_LIBRARY_TARGETS);
+    String initialCommit = repo.commit("Initial commit");
+
+    TestRepo submodule = TestRepo.create(tempDir.newFolder("submodule").toPath());
+    submodule.replaceWithContentsFrom(Commits.EMPTY_SUBMODULE);
+    submodule.commit("Create empty submodule");
+
+    repo.addSubModule(submodule, "demo-submodule");
+    String addSubmodule = repo.commit("Add submodule");
+
+    assertTargetDeterminatorRun(
+            initialCommit,
+            addSubmodule,
+            Set.of(),
+            Set.of());
+    assertThat(
+        "The submodule should now be present with its README.md but isn't",
+        Files.exists(testDir.resolve("demo-submodule").resolve("README.md")));
+  }
+
+  @Test
+  public void addDependentTargetInSubmodule() throws Exception {
+    TestRepo repo = TestRepo.create(testDir);
+
+    repo.replaceWithContentsFrom(Commits.SIMPLE_JAVA_LIBRARY_TARGETS);
+    String initialCommit = repo.commit("Initial commit");
+
+    TestRepo submodule = TestRepo.create(tempDir.newFolder("submodule").toPath());
+    submodule.replaceWithContentsFrom(Commits.EMPTY_SUBMODULE);
+    submodule.commit("Create empty submodule");
+
+    TestRepo submoduleWithinRepo = repo.addSubModule(submodule, "demo-submodule");
+    String addSubmodule = repo.commit("Add submodule");
+
+    submodule.replaceWithContentsFrom(Commits.ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY);
+    submodule.commit("Add code to submodule");
+
+    submoduleWithinRepo.pull();
+    String updateCommit = repo.commit("Update submodule", "demo-submodule");
+
+    assertTargetDeterminatorRun(
+            addSubmodule,
+            updateCommit,
+            Set.of("//demo-submodule:submodule_simple"),
+            Set.of());
+  }
 //
 //  @Test
 //  public void changeSubmodulePath() throws Exception {
@@ -665,11 +744,6 @@ public abstract class Tests {
                       + " but wasn't",
               testDir.resolve(ignoredDirectoryName).resolve(ignoredFileName).toFile().exists());
     }
-  }
-
-  private void gitCheckout(String commitName) throws Exception {
-    TestRepo repo = TestRepo.create(testDir);
-    repo.replaceWithContentsFrom(commitName);
   }
 
   private boolean isLinux() {

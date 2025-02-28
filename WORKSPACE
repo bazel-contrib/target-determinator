@@ -54,7 +54,7 @@ maven_install(
     artifacts = [
         "com.google.guava:guava:31.0.1-jre",
         "junit:junit:4.12",
-        "org.eclipse.jgit:org.eclipse.jgit:5.11.0.202103091610-r",
+        "org.eclipse.jgit:org.eclipse.jgit:7.1.0.202411261347-r",
         "org.hamcrest:hamcrest-all:1.3",
     ],
     fail_if_repin_required = True,

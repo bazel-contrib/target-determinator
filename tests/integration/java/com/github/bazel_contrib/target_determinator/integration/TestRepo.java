@@ -7,11 +7,13 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.storage.file.FileBasedConfig;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -53,22 +55,34 @@ public class TestRepo {
     }
 
     private static Git getGitRepo(Path dir) throws GitAPIException, IOException {
+        Git git;
+
         if (Files.exists(dir.resolve(".git"))) {
             Repository repo = new FileRepositoryBuilder()
                     .setGitDir(dir.resolve(".git").toFile())
                     .setInitialBranch("main")
                     .build();
-            return new Git(repo);
+            git = new Git(repo);
+        } else {
+            git = Git.init().setDirectory(dir.toFile()).setInitialBranch("main").call();
         }
-        return Git.init().setDirectory(dir.toFile()).setInitialBranch("main").call();
+
+        // By default, remote repos are not allowed to use the `file`
+        // URI scheme for things like submodules. That's unfortunate
+        // since that's exactly what we need. Override that setting.
+        FileBasedConfig config = (FileBasedConfig) git.getRepository().getConfig();
+        config.setString("protocol", "file", "allow", "always");
+        config.save();
+
+        return git;
     }
 
     public Path getDir() {
         return dir;
     }
 
-    public String getUri() {
-        return dir.toUri().toString();
+    public URI getUri() {
+        return dir.toUri();
     }
 
     public String commit(String message, String... additionalPaths) {
@@ -164,19 +178,11 @@ public class TestRepo {
     public TestRepo addSubModule(TestRepo submodule, String pathInLocalRepo) {
         try {
             Repository repo = gitRepo.submoduleAdd()
-                    .setURI(submodule.getUri())
+                    .setURI(submodule.getUri().toString())
                     .setPath(pathInLocalRepo)
                     .call();
 
             return new TestRepo(dir.resolve(pathInLocalRepo), new Git(repo));
-        } catch (GitAPIException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public void updateSubmodules() {
-        try {
-            gitRepo.submoduleUpdate().call();
         } catch (GitAPIException e) {
             throw new RuntimeException(e);
         }
