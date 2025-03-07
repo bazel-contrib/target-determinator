@@ -1,6 +1,11 @@
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@rules_jvm_external//:defs.bzl", "artifact")
 
+filegroup(
+    name = "test-data",
+    srcs = glob(["testdata/**/*"]),
+)
+
 java_test(
     name = "TargetDeterminatorIntegrationTest",
     timeout = "long",
@@ -65,15 +70,21 @@ java_library(
 java_library(
     name = "util",
     srcs = [
+        "Commits.java",
         "TargetComputationErrorException.java",
         "TargetDeterminator.java",
-        "TestdataRepo.java",
+        "TestRepo.java",
         "Util.java",
+    ],
+    data = [
+        ":test-data",
     ],
     deps = [
         "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
         artifact("com.google.guava:guava"),
+        artifact("junit:junit"),
         artifact("org.eclipse.jgit:org.eclipse.jgit"),
         artifact("org.hamcrest:hamcrest-all"),
+        "@bazel_tools//tools/java/runfiles",
     ],
 )

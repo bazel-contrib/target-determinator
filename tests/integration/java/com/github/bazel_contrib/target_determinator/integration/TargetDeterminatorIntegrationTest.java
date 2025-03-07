@@ -29,7 +29,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
   }
 
   @Override
-  protected boolean supportsIgnoredUnaddedFiles() {
+  protected boolean supportsIgnoredUnstagedFiles() {
     return true;
   }
 

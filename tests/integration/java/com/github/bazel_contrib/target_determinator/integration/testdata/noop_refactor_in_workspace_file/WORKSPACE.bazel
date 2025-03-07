@@ -1,0 +1,12 @@
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+RULES_GIT_TAG = "rules/v0/initial-commit"
+
+RULES_ARCHIVE_SHA256 = "50ee2b97a74106f1e293c96478b422bf896a2f378d72a5d33320ec261cc4d323"
+
+http_archive(
+    name = "rules",
+    sha256 = RULES_ARCHIVE_SHA256,
+    strip_prefix = "target-determinator-testdata-" + RULES_GIT_TAG.replace("/", "-"),
+    url = "https://github.com/bazel-contrib/target-determinator-testdata/archive/refs/tags/" + RULES_GIT_TAG + ".tar.gz",
+)

@@ -1,0 +1,14 @@
+java_test(
+    name = "ExampleTest",
+    srcs = [":ExampleTestSource"],
+)
+
+java_test(
+    name = "OtherExampleTest",
+    srcs = ["OtherExampleTest.java"],
+)
+
+alias(
+    name = "ExampleTestSource",
+    actual = "ExampleTest.java",
+)

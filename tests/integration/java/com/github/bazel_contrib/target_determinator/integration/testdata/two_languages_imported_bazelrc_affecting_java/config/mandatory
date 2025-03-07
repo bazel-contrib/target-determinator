@@ -1,0 +1,2 @@
+build --verbose_failures
+build --javacopt="-source 7 -target 7"

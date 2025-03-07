@@ -1,0 +1,2 @@
+import %workspace%/config/mandatory
+build --host_javacopt="-source 7 -target 7"

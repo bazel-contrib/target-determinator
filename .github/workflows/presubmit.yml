@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Purge all the data
+        run: bazel clean --expunge --async; rm -rf /home/runner/.cache/bazel-repo
       - name: Check dependencies and format
         run: scripts/update-dependencies && scripts/format && { [[ -z "$(git status --porcelain)" ]] || exit 1; }
       - name: bazel test //...

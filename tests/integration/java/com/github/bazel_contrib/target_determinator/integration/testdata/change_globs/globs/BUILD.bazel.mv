@@ -1,0 +1,10 @@
+sh_test(
+    name = "root",
+    srcs = ["root.sh"],
+    data = glob(["**"]),
+)
+
+sh_test(
+    name = "root_without_globs",
+    srcs = ["root.sh"],
+)

@@ -1,0 +1,7 @@
+load("//rules:simple_java_library.bzl", "simple_java_library")
+
+simple_java_library(
+    name = "submodule_simple",
+    src = "SubmoduleSimple.java",
+    deps = ["//java/example/simple:simple"],
+)

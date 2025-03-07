@@ -1,0 +1,3 @@
+load("//:workspace.bzl", "setup")
+
+setup()

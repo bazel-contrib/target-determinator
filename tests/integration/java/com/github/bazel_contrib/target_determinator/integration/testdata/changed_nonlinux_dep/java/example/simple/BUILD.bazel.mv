@@ -1,0 +1,24 @@
+load("//rules:simple_java_library.bzl", "simple_java_library")
+
+simple_java_library(
+    name = "simple",
+    src = select({
+        "@platforms//os:linux": "SimpleLinux.java",
+        "//conditions:default": "Simple.java",
+    }),
+    deps = select({
+        "@platforms//os:linux": [":simple_dep_linux"],
+        "//conditions:default": [":simple_dep"],
+    }),
+    visibility = ["//visibility:public"],
+)
+
+simple_java_library(
+    name = "simple_dep",
+    src = "Dep.java",
+)
+
+simple_java_library(
+    name = "simple_dep_linux",
+    src = "LinuxDep.java",
+)

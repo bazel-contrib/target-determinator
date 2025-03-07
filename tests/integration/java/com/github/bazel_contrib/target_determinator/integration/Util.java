@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -56,15 +55,6 @@ public class Util {
           empty());
     } else if (allowOverBuilds) {
       assertThat("allowOverBuilds is set but no over-building was done", extraTargets, not(empty()));
-    }
-  }
-
-  public static TestdataRepo cloneTestdataRepo() throws Exception {
-    String property = System.getProperty("target_determinator_testdata_dir");
-    if (property != null) {
-      return TestdataRepo.forExistingClone(Paths.get(property));
-    } else {
-      return TestdataRepo.create();
     }
   }
 }
