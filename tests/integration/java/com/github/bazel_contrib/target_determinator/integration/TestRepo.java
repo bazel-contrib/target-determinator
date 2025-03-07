@@ -21,6 +21,7 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -200,11 +201,35 @@ public class TestRepo {
         }
     }
 
-    public void move(String from, String to) {
+    public void moveSubmodule(String from, String to) {
         try {
             Files.move(dir.resolve(from), dir.resolve(to));
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
+
+            // TODO: Using `String.replace` the way we are is asking for trouble. Do this nicely.
+
+            // Check the .gitmodules file if necessary
+            Path gitModules = dir.resolve(".gitmodules");
+            String contents = Files.readString(gitModules);
+            contents = contents.replace("path = " + from, "path = " + to);
+            Files.writeString(gitModules, contents);
+
+            gitRepo.add().addFilepattern(to).call();
+            gitRepo.rm().addFilepattern(from).setCached(true).call();
+
+            Path newGitSubmoduleDir = dir.resolve(".git").resolve("modules").resolve(to);
+            Files.move(dir.resolve(".git").resolve("modules").resolve(from), newGitSubmoduleDir);
+
+            Path submoduleConfig = newGitSubmoduleDir.resolve("config");
+            String configContents = Files.readString(submoduleConfig);
+            configContents = configContents.replace("/" + from, "/" + to);
+            Files.writeString(submoduleConfig, configContents);
+
+            Path gitFile = dir.resolve(to).resolve(".git");
+            String gitFileContents = Files.readString(gitFile);
+            gitFileContents = gitFileContents.replace("/" + from, "/" + to);
+            Files.writeString(gitFile, gitFileContents);
+        } catch (IOException | GitAPIException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -224,5 +249,44 @@ public class TestRepo {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    public void removeSubmodule(String submodulePath) {
+        try {
+            FileBasedConfig config = (FileBasedConfig) gitRepo.getRepository().getConfig();
+            config.unsetSection("submodule", submodulePath);
+            config.save();
+
+            // Remove the submodule from the `.gitmodules` file
+            deleteFromGitsubmodulesFile(submodulePath);
+
+            gitRepo.rm().addFilepattern(submodulePath).setCached(true).call();
+        } catch (GitAPIException | IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void deleteFromGitsubmodulesFile(String submodulePath) throws IOException {
+        Path gitModules = dir.resolve(".gitmodules");
+        List<String> contents = Files.readAllLines(gitModules);
+        StringBuilder newContents = new StringBuilder();
+        boolean inSection = false;
+        for (String line : contents) {
+            // New sections start at column 0, with something like
+            // `[submodule`. Look for the starter character.
+            if (inSection && !line.isEmpty() && line.charAt(0) == '[') {
+                inSection = false;
+            }
+            // However, the section we want to delete starts with a very
+            // particular pattern, so look for that next.
+            if (!inSection && line.startsWith("[submodule \"" + submodulePath + "\"]")) {
+                inSection = true;
+            }
+            // If we're not deleting things, copy it into the new contents
+            if (!inSection) {
+                newContents.append(line).append("\n");
+            }
+        }
+        Files.writeString(gitModules, newContents.toString());
     }
 }

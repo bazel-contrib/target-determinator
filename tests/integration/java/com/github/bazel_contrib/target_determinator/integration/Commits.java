@@ -61,14 +61,6 @@ class Commits {
     public static final String REDUCE_DEPENDENCY_VISIBILITY = "reduce_dependency_visibility";
     public static final String ONE_TEST_WITH_GITIGNORE = "one_test_with_gitignore";
     public static final String TWO_TESTS_WITH_GITIGNORE = "two_tests_with_gitignore";
-    public static final String SUBMODULE_ADD_TRIVIAL_SUBMODULE =
-            "b88ddcfe3da63c8308ce6d3274dd424d2c7b211a";
-    public static final String SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY =
-            "4e9b396b3a8030925d7b544cda3f1edbc199810f";
-    public static final String SUBMODULE_CHANGE_DIRECTORY =
-            "1cef87480c2c1dac74cc9de7470504fbd2b80265";
-    public static final String SUBMODULE_DELETE_SUBMODULE =
-            "d1b1d8f07f2e99429bafda134282b97588c69b3d";
     public static final String TWO_TESTS_BRANCH =
             "two-tests-branch"; // Local only (created by the test case).
     public static final String ONE_SH_TEST = "one_sh_test";

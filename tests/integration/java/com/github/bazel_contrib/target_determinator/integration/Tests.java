@@ -2,6 +2,7 @@ package com.github.bazel_contrib.target_determinator.integration;
 
 import static junit.framework.TestCase.fail;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assume.assumeFalse;
 
@@ -31,8 +32,15 @@ import org.junit.rules.TestName;
  */
 public abstract class Tests {
 
-  @Rule
-  public TemporaryFolder tempDir = new TemporaryFolder();
+  @Rule public TestName name = new TestName();
+  @Rule public TemporaryFolder tempDir = new TemporaryFolder();
+
+  protected Path testDir;
+
+  protected static final String ignoredDirectoryName = "ignored-directory";
+  protected static final String ignoredFileName = "some-file";
+
+  private boolean allowOverBuilds = false;
 
   /**
    * Get the targets affected by the diff between two commits.
@@ -45,15 +53,6 @@ public abstract class Tests {
    */
   abstract Set<Label> getTargets(Path workspace, String commitBefore, String commitAfter)
       throws TargetComputationErrorException;
-
-  protected Path testDir;
-
-  protected static final String ignoredDirectoryName = "ignored-directory";
-  protected static final String ignoredFileName = "some-file";
-
-  private boolean allowOverBuilds = false;
-
-  @Rule public TestName name = new TestName();
 
   private Set<Label> getTargets(String commitBefore, String commitAfter)
       throws TargetComputationErrorException {
@@ -480,7 +479,7 @@ public abstract class Tests {
     submoduleWithinRepo.pull();
     String beforeCommit = repo.commit("Add dependent targets in submodule", "demo-submodule");
 
-    repo.move("demo-submodule", "demo-submodule-2");
+    repo.moveSubmodule("demo-submodule", "demo-submodule-2");
     String afterCommit = repo.commit("Move demo-submodule to demo-submodule-2");
 
     Files.createFile(repo.getDir().resolve("demo-submodule-2").resolve("untracked-file"));
@@ -542,32 +541,71 @@ public abstract class Tests {
             Set.of("//demo-submodule:submodule_simple"),
             Set.of());
   }
-//
-//  @Test
-//  public void changeSubmodulePath() throws Exception {
-//    doTest(
-//        Commits.SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY,
-//        Commits.SUBMODULE_CHANGE_DIRECTORY,
-//        Set.of("//demo-submodule-2:submodule_simple"));
-//
-//    assertThat(
-//        "The old submodule directory should not exist anymore",
-//        not(Files.exists(testDir.resolve("demo-submodule"))));
-//
-//    assertThat(
-//        "The moved submodule should now be present with its README.md but isn't",
-//        Files.exists(testDir.resolve("demo-submodule-2").resolve("README.md")));
-//  }
-//
-//  @Test
-//  public void deleteSubmodule() throws Exception {
-//    doTest(Commits.SUBMODULE_CHANGE_DIRECTORY, Commits.SUBMODULE_DELETE_SUBMODULE, Set.of());
-//
-//    assertThat(
-//        "The old submodule directory should not exist anymore",
-//        not(Files.exists(testDir.resolve("demo-submodule-2"))));
-//  }
-//
+
+  @Test
+  public void targetDeterminationShouldLeaveTheMovedSubmoduleBehind() throws Exception {
+    TestRepo repo = TestRepo.create(testDir);
+
+    repo.replaceWithContentsFrom(Commits.SIMPLE_JAVA_LIBRARY_TARGETS);
+    repo.commit("Initial commit");
+
+    TestRepo submodule = TestRepo.create(tempDir.newFolder("submodule").toPath());
+    submodule.replaceWithContentsFrom(Commits.EMPTY_SUBMODULE);
+    submodule.commit("Create empty submodule");
+
+    TestRepo submoduleWithinRepo = repo.addSubModule(submodule, "demo-submodule");
+
+    // Update the submodule
+    submodule.replaceWithContentsFrom(Commits.ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY);
+    submodule.commit("Update submodule");
+
+    // Now update the reference in the main repo
+    submoduleWithinRepo.pull();
+    String beforeCommit = repo.commit("Add dependent targets in submodule", "demo-submodule");
+
+    repo.moveSubmodule("demo-submodule", "demo-submodule-2");
+    String afterCommit = repo.commit("Move demo-submodule to demo-submodule-2");
+
+    assertTargetDeterminatorRun(
+            beforeCommit,
+            afterCommit,
+            Set.of("//demo-submodule-2:submodule_simple"),
+            Set.of());
+
+    assertThat(
+        "The old submodule directory should not exist anymore",
+        not(Files.exists(testDir.resolve("demo-submodule"))));
+
+    assertThat(
+        "The moved submodule should now be present with its README.md but isn't",
+        Files.exists(testDir.resolve("demo-submodule-2").resolve("README.md")));
+  }
+
+  @Test
+  public void targetDeterminationDoesNotLeaveDeletedSubmoduleDirectoriesBehind() throws Exception {
+    TestRepo repo = TestRepo.create(testDir);
+
+    repo.replaceWithContentsFrom(Commits.SIMPLE_JAVA_LIBRARY_TARGETS);
+    repo.commit("Initial commit");
+
+    TestRepo submodule = TestRepo.create(tempDir.newFolder("submodule").toPath());
+    submodule.replaceWithContentsFrom(Commits.EMPTY_SUBMODULE);
+    submodule.commit("Create empty submodule");
+
+    repo.addSubModule(submodule, "demo-submodule");
+    String before = repo.commit("Add a submodule");
+
+    // Now delete the submodule
+    repo.removeSubmodule("demo-submodule");
+    String after = repo.commit("Delete submodule");
+
+    assertTargetDeterminatorRun(before, after, Set.of(), Set.of());
+
+    assertThat(
+        "The old submodule directory should not exist anymore",
+        not(Files.exists(testDir.resolve("demo-submodule-2"))));
+  }
+
   @Test
   public void testRelativeRevisions() throws Exception {
     TestRepo repo = TestRepo.create(testDir);
@@ -727,8 +765,10 @@ public abstract class Tests {
     if (supportsIgnoredUnstagedFiles()) {
       try {
         Path ignoredDirectory = testDir.resolve(ignoredDirectoryName);
-        Files.createDirectory(ignoredDirectory);
-        Files.createFile(ignoredDirectory.resolve(ignoredFileName));
+        if (!Files.exists(ignoredDirectory)) {
+          Files.createDirectory(ignoredDirectory);
+          Files.createFile(ignoredDirectory.resolve(ignoredFileName));
+        }
       } catch (IOException e) {
         throw new UncheckedIOException(e);
       }

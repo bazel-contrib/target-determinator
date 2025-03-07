@@ -207,7 +207,7 @@ public class TargetDeterminatorSpecificFlagsTest {
 
     String beforeCommit = repo.commit("Add dependent target in submodule", "demo-submodule");
 
-    repo.move("demo-submodule", "demo-submodule-2");
+    repo.moveSubmodule("demo-submodule", "demo-submodule-2");
     repo.commit("Move demo-submodule to demo-submodule-2");
 
     Files.createFile(repo.getDir().resolve("demo-submodule-2").resolve("untracked-file"));
