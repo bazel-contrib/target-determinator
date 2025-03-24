@@ -283,8 +283,8 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 						Category: "RuleImplementedChanged",
 					})
 				} else {
-					attributeBeforeJson, _ := protojson.Marshal(before.AttributeForSerialization(attributeBefore))
-					attributeAfterJson, _ := protojson.Marshal(after.AttributeForSerialization(attributeAfter))
+					attributeBeforeJson, _ := protojson.Marshal(normalizedBeforeAttribute)
+					attributeAfterJson, _ := protojson.Marshal(normalizedAfterAttribute)
 					differences = append(differences, Difference{
 						Category: "AttributeChanged",
 						Key:      attributeName,
