@@ -1,9 +1,8 @@
 package pkg
 
 import (
-	"github.com/bazelbuild/bazel-gazelle/label"
-
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
+	"github.com/bazelbuild/bazel-gazelle/label"
 )
 
 type Normalizer struct {
