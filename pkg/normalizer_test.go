@@ -1,8 +1,9 @@
 package pkg
 
 import (
-	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	"testing"
+
+	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 )
 
 const (
