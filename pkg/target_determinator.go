@@ -710,7 +710,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	}
 
 	var repoMapping map[string]string
-	hasBazelMod, _ := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("6.0.0")), nil)
+	hasBazelMod, _ := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("8.0.0")), nil)
 	if hasBazelMod != nil && *hasBazelMod {
 		var retrieveErr error
 		repoMapping, retrieveErr = retrieveRepoMapping(context.WorkspacePath, context.BazelCmd)

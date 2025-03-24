@@ -380,11 +380,12 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 }
 
 func parseResult(t *testing.T, result *analysis.CqueryResult, bazelRelease string) *TargetHashCache {
-	cqueryResult, err := ParseCqueryResult(result)
+	n := Normalizer{}
+	cqueryResult, err := ParseCqueryResult(result, &n)
 	if err != nil {
 		t.Fatalf("Failed to parse cquery result: %v", err)
 	}
-	return NewTargetHashCache(cqueryResult, bazelRelease)
+	return NewTargetHashCache(cqueryResult, &n, bazelRelease)
 }
 
 func areHashesEqual(left, right []byte) bool {
@@ -392,7 +393,8 @@ func areHashesEqual(left, right []byte) bool {
 }
 
 func mustParseLabel(s string) label.Label {
-	l, err := ParseCanonicalLabel(s)
+	n := Normalizer{}
+	l, err := n.ParseCanonicalLabel(s)
 	if err != nil {
 		panic(err)
 	}
