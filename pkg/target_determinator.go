@@ -543,10 +543,6 @@ func (queryInfo *QueryResults) PrefillCache() error {
 	for w := 1; w <= numWorkers; w++ {
 		go func() {
 			for labelAndConfiguration := range labelAndConfigurationsChan {
-				label := labelAndConfiguration.Label
-				labelString := label.String()
-				labelString = labelString
-
 				_, err := queryInfo.TargetHashCache.Hash(labelAndConfiguration)
 				if err != nil {
 					once.Do(func() { errorsChan <- err }) // We only return one error.
@@ -681,7 +677,7 @@ func retrieveRepoMapping(workspacePath string, bazelCmd BazelCmd) (map[string]st
 
 }
 
-func NormalizeConfiguredTarget(target *analysis.ConfiguredTarget, n *Normalizer) error {
+func NormalizeConfiguredTarget(target *analysis.ConfiguredTarget, n *Normalizer) {
 	if target.GetTarget().GetRule() != nil {
 		rule := target.GetTarget().GetRule()
 		for _, attr := range rule.GetAttribute() {
@@ -696,8 +692,6 @@ func NormalizeConfiguredTarget(target *analysis.ConfiguredTarget, n *Normalizer)
 			}
 		}
 	}
-
-	return nil
 }
 
 // Note that a non-nil QueryResults may be returned even in the error case, which will have an
@@ -976,10 +970,7 @@ func ParseCqueryResult(result *analysis.CqueryResult, n *Normalizer) (map[label.
 			configuredTargets[l] = make(map[Configuration]*analysis.ConfiguredTarget)
 		}
 
-		normalizeErr := NormalizeConfiguredTarget(target, n)
-		if normalizeErr != nil {
-			return nil, normalizeErr
-		}
+		NormalizeConfiguredTarget(target, n)
 
 		configuredTargets[l][NormalizeConfiguration(target.GetConfiguration().GetChecksum())] = target
 	}
