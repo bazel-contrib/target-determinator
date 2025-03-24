@@ -29,14 +29,6 @@ load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
 
 gazelle_dependencies()
 
-# Pull in bazel_diff for testing.
-http_file(
-    name = "bazel_diff",
-    downloaded_file_path = "bazel-diff_deploy.jar",
-    sha256 = "5f36e74a8d6167e4d31f663526a63be3e3728456d8b5b4a84503315dd10e65e7",
-    url = "https://github.com/Tinder/bazel-diff/releases/download/9.0.0/bazel-diff_deploy.jar",
-)
-
 RULES_JVM_EXTERNAL_TAG = "6.7"
 
 RULES_JVM_EXTERNAL_SHA = "a1e351607f04fed296ba33c4977d3fe2a615ed50df7896676b67aac993c53c18"
@@ -109,35 +101,3 @@ load("//:third_party/go/deps.bzl", "go_dependencies")
 
 # gazelle:repository_macro third_party/go/deps.bzl%go_dependencies
 go_dependencies()
-
-##########################################################
-# bazel-differ: https://github.com/ewhauser/bazel-differ #
-##########################################################
-
-http_file(
-    name = "bazel_differ_linux_arm64",
-    executable = True,
-    integrity = "sha256-eFjQ2D6auwcnycoY67qOx6NJPsI2ZKSUv1cPdaBVtOo=",
-    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.7/bazel-differ-linux-arm64",
-)
-
-http_file(
-    name = "bazel_differ_linux_x86_64",
-    executable = True,
-    integrity = "sha256-quwSTcr6dHF0Jh7JyCR74zMsItHRcS7YD7YSAClp5CA=",
-    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.7/bazel-differ-linux-x86_64",
-)
-
-http_file(
-    name = "bazel_differ_darwin_arm64",
-    executable = True,
-    integrity = "sha256-0dbJKJXHzTr0/43nJxFO+xGbCPiGYEqVirve25SXss4=",
-    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.7/bazel-differ-darwin-arm64",
-)
-
-http_file(
-    name = "bazel_differ_darwin_x86_64",
-    executable = True,
-    integrity = "sha256-wS/sbX/XgsIaX51VUOGyv7wRzKkmOUgLHzx+wg2weVE=",
-    url = "https://github.com/ewhauser/bazel-differ/releases/download/v0.0.7/bazel-differ-darwin-x86_64",
-)
