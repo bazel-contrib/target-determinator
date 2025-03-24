@@ -6,6 +6,7 @@ go_library(
         "bazel.go",
         "configurations.go",
         "hash_cache.go",
+        "normalizer.go",
         "target_determinator.go",
         "targets_list.go",
         "walker.go",
