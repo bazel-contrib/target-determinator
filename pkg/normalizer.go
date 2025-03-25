@@ -44,8 +44,8 @@ func (n *Normalizer) NormalizeAttribute(attr *build.Attribute) *build.Attribute 
 		}
 	}
 
-	// The visibility attribute is a string list rather than a label list, but it has label strings
-	// TODO Should we try to canonicalize all string list attributes instead of only visibility
+	// The visibility attribute is a string list rather than a label list but it has label strings.
+	// It should be handled as an exception, see https://bazelbuild.slack.com/archives/CDCMRLS23/p1742821059464199
 	isVisibilityAttribute := attrType == build.Attribute_STRING_LIST && *attr.Name == "visibility"
 
 	if attrType == build.Attribute_OUTPUT_LIST || attrType == build.Attribute_LABEL_LIST || isVisibilityAttribute {
