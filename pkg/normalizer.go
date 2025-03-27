@@ -39,7 +39,7 @@ func (n *Normalizer) NormalizeAttribute(attr *build.Attribute) *build.Attribute 
 
 	// An attribute with a nodep property can also hold labels
 	// It should be handled as an exception, see https://bazelbuild.slack.com/archives/CDCMRLS23/p1742821059464199
-	isNoDepAttribute := attrType == build.Attribute_STRING && *attr.Nodep
+	isNoDepAttribute := attrType == build.Attribute_STRING && attr.Nodep != nil && *attr.Nodep
 
 	if attrType == build.Attribute_OUTPUT || attrType == build.Attribute_LABEL || isNoDepAttribute {
 		keyLabel, parseErr := n.ParseCanonicalLabel(attr.GetStringValue())
@@ -50,7 +50,7 @@ func (n *Normalizer) NormalizeAttribute(attr *build.Attribute) *build.Attribute 
 		}
 	}
 
-	isNoDepListAttribute := attrType == build.Attribute_STRING_LIST && *attr.Nodep
+	isNoDepListAttribute := attrType == build.Attribute_STRING_LIST && attr.Nodep != nil && *attr.Nodep
 
 	if attrType == build.Attribute_OUTPUT_LIST || attrType == build.Attribute_LABEL_LIST || isNoDepListAttribute {
 		for idx, dep := range attr.GetStringListValue() {
