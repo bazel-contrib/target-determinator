@@ -58,7 +58,22 @@ func TestNormalizeAttributes(t *testing.T) {
 	}
 
 	testCases := map[string]func(*testing.T){
-		"visibility_string_list": func(t *testing.T) {
+		"nodep_string": func(t *testing.T) {
+			attr := &build.Attribute{
+				Name:        toPtr("visibility"),
+				Type:        toPtr(build.Attribute_STRING),
+				Nodep:       toPtr(true),
+				StringValue: toPtr(NonCanonicalLabel),
+			}
+
+			norm := n.NormalizeAttribute(attr)
+
+			equality := *norm.StringValue == CanonicalLabel
+
+			if !equality {
+				t.Fatalf("Expected string value to be %v, got %v", CanonicalLabel, *norm.StringValue)
+			}
+		}, "nodep_string_list": func(t *testing.T) {
 			values := []string{
 				NonCanonicalLabel,
 				DummyLabel,
@@ -69,6 +84,7 @@ func TestNormalizeAttributes(t *testing.T) {
 			attr := &build.Attribute{
 				Name:            toPtr("visibility"),
 				Type:            toPtr(build.Attribute_STRING_LIST),
+				Nodep:           toPtr(true),
 				StringListValue: values,
 			}
 

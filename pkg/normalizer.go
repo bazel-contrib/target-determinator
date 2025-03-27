@@ -5,12 +5,14 @@ import (
 	"github.com/bazelbuild/bazel-gazelle/label"
 )
 
+// Normalizer is a struct that contains a mapping of non-canonical repository names to canonical repository names.
 type Normalizer struct {
 	Mapping map[string]string
 }
 
 // ParseCanonicalLabel parses a label from a string, and removes sources of inconsequential difference which would make comparing two labels fail.
 // In particular, it treats @// the same as //
+// If the label is not canonical, it will attempt to map the repository to its canonical form coming from `bazel mod dump_repo_mapping ""`.
 func (n *Normalizer) ParseCanonicalLabel(s string) (label.Label, error) {
 	l, err := label.Parse(s)
 	if err != nil {
@@ -35,7 +37,11 @@ func (n *Normalizer) ParseCanonicalLabel(s string) (label.Label, error) {
 func (n *Normalizer) NormalizeAttribute(attr *build.Attribute) *build.Attribute {
 	attrType := attr.GetType()
 
-	if attrType == build.Attribute_OUTPUT || attrType == build.Attribute_LABEL {
+	// An attribute with a nodep property can also hold labels
+	// It should be handled as an exception, see https://bazelbuild.slack.com/archives/CDCMRLS23/p1742821059464199
+	isNoDepAttribute := attrType == build.Attribute_STRING && *attr.Nodep
+
+	if attrType == build.Attribute_OUTPUT || attrType == build.Attribute_LABEL || isNoDepAttribute {
 		keyLabel, parseErr := n.ParseCanonicalLabel(attr.GetStringValue())
 
 		if parseErr == nil {
@@ -44,11 +50,9 @@ func (n *Normalizer) NormalizeAttribute(attr *build.Attribute) *build.Attribute 
 		}
 	}
 
-	// The visibility attribute is a string list rather than a label list but it has label strings.
-	// It should be handled as an exception, see https://bazelbuild.slack.com/archives/CDCMRLS23/p1742821059464199
-	isVisibilityAttribute := attrType == build.Attribute_STRING_LIST && *attr.Name == "visibility"
+	isNoDepListAttribute := attrType == build.Attribute_STRING_LIST && *attr.Nodep
 
-	if attrType == build.Attribute_OUTPUT_LIST || attrType == build.Attribute_LABEL_LIST || isVisibilityAttribute {
+	if attrType == build.Attribute_OUTPUT_LIST || attrType == build.Attribute_LABEL_LIST || isNoDepListAttribute {
 		for idx, dep := range attr.GetStringListValue() {
 			keyLabel, parseErr := n.ParseCanonicalLabel(dep)
 
