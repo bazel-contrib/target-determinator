@@ -25,7 +25,11 @@ import (
 )
 
 // NewTargetHashCache creates a TargetHashCache which uses context for metadata lookups.
-func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget, bazelRelease string) *TargetHashCache {
+func NewTargetHashCache(
+	context map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget,
+	normalizer *Normalizer,
+	bazelRelease string,
+) *TargetHashCache {
 	bazelVersionSupportsConfiguredRuleInputs := isConfiguredRuleInputsSupported(bazelRelease)
 
 	return &TargetHashCache{
@@ -33,6 +37,7 @@ func NewTargetHashCache(context map[gazelle_label.Label]map[Configuration]*analy
 		fileHashCache: &fileHashCache{
 			cache: make(map[string]*cacheEntry),
 		},
+		normalizer:                               normalizer,
 		bazelRelease:                             bazelRelease,
 		bazelVersionSupportsConfiguredRuleInputs: bazelVersionSupportsConfiguredRuleInputs,
 		cache:                                    make(map[gazelle_label.Label]map[Configuration]*cacheEntry),
@@ -62,6 +67,8 @@ type TargetHashCache struct {
 	fileHashCache                            *fileHashCache
 	bazelRelease                             string
 	bazelVersionSupportsConfiguredRuleInputs bool
+
+	normalizer *Normalizer
 
 	frozen bool
 
@@ -136,6 +143,10 @@ func (thc *TargetHashCache) KnownConfigurations(label gazelle_label.Label) *ss.S
 // accurate from when the TargetHashCache was created.
 func (thc *TargetHashCache) Freeze() {
 	thc.frozen = true
+}
+
+func (thc *TargetHashCache) ParseCanonicalLabel(label string) (gazelle_label.Label, error) {
+	return thc.normalizer.ParseCanonicalLabel(label)
 }
 
 // Difference represents a difference of a target between two commits.
@@ -264,14 +275,16 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 				Before:   string(attributeBeforeJson),
 			})
 		} else {
-			if !equivalentAttributes(attributeBefore, attributeAfter) {
+			normalizedBeforeAttribute := before.AttributeForSerialization(attributeBefore)
+			normalizedAfterAttribute := after.AttributeForSerialization(attributeAfter)
+			if !equivalentAttributes(normalizedBeforeAttribute, normalizedAfterAttribute) {
 				if attributeName == "$rule_implementation_hash" {
 					differences = append(differences, Difference{
 						Category: "RuleImplementedChanged",
 					})
 				} else {
-					attributeBeforeJson, _ := protojson.Marshal(AttributeForSerialization(attributeBefore))
-					attributeAfterJson, _ := protojson.Marshal(AttributeForSerialization(attributeAfter))
+					attributeBeforeJson, _ := protojson.Marshal(normalizedBeforeAttribute)
+					attributeAfterJson, _ := protojson.Marshal(normalizedAfterAttribute)
 					differences = append(differences, Difference{
 						Category: "AttributeChanged",
 						Key:      attributeName,
@@ -285,7 +298,7 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 	sortedAttributeNamesAfter := sortKeys(attributesAfter)
 	for _, attributeName := range sortedAttributeNamesAfter {
 		if _, ok := attributesBefore[attributeName]; !ok {
-			attributeAfterJson, _ := protojson.Marshal(AttributeForSerialization(attributesAfter[attributeName]))
+			attributeAfterJson, _ := protojson.Marshal(after.AttributeForSerialization(attributesAfter[attributeName]))
 			differences = append(differences, Difference{
 				Category: "AttributeAdded",
 				Key:      attributeName,
@@ -308,7 +321,8 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 
 	for _, ruleInputLabelAndConfigurations := range ruleInputLabelsAndConfigurationsAfter {
 		ruleInputLabel := ruleInputLabelAndConfigurations.Label
-		if _, ok := ruleInputLabelsToConfigurationsBefore[ruleInputLabel]; !ok {
+		knownConfigurationsBefore, ok := ruleInputLabelsToConfigurationsBefore[ruleInputLabel]
+		if !ok {
 			differences = append(differences, Difference{
 				Category: "RuleInputAdded",
 				Key:      ruleInputLabel.String(),
@@ -318,7 +332,6 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 			// query information, so we could filter away e.g. host changes when we only have a target dep.
 			// Unfortunately, Bazel doesn't currently expose this.
 			// See https://github.com/bazelbuild/bazel/issues/14610#issuecomment-1024460141
-			knownConfigurationsBefore := ruleInputLabelsToConfigurationsBefore[ruleInputLabel]
 			knownConfigurationsAfter := ruleInputLabelsToConfigurationsAfter[ruleInputLabel]
 
 			for _, knownConfigurationAfter := range knownConfigurationsAfter.SortedSlice() {
@@ -367,6 +380,34 @@ func WalkDiffs(before *TargetHashCache, after *TargetHashCache, labelAndConfigur
 	}
 
 	return differences, nil
+}
+
+// AttributeForSerialization redacts details about an attribute which don't affect the output of
+// building them, and returns equivalent canonical attribute metadata.
+// In particular it redacts:
+//   - Whether an attribute was explicitly specified (because the effective value is all that
+//     matters).
+//   - Any attribute named `generator_location`, because these point to absolute paths for
+//     built-in `cc_toolchain_suite` targets such as `@local_config_cc//:toolchain`.
+func (thc *TargetHashCache) AttributeForSerialization(rawAttr *build.Attribute) *build.Attribute {
+	normalized := *rawAttr
+	normalized.ExplicitlySpecified = nil
+
+	// Redact generator_location, which typically contains absolute paths but has no bearing on the
+	// functioning of a rule.
+	// This is also done in Bazel's internal target hash computation. See:
+	// https://github.com/bazelbuild/bazel/blob/6971b016f1e258e3bb567a0f9fe7a88ad565d8f2/src/main/java/com/google/devtools/build/lib/query2/query/output/SyntheticAttributeHashCalculator.java#L78-L81
+	if normalized.Name != nil {
+		if *normalized.Name == "generator_location" {
+			normalized.StringValue = nil
+		}
+	}
+
+	return thc.normalizer.NormalizeAttribute(&normalized)
+}
+
+func equivalentAttributes(left, right *build.Attribute) bool {
+	return proto.Equal(left, right)
 }
 
 func indexByLabel(labelsAndConfigurations []LabelAndConfigurations) map[gazelle_label.Label]*ss.SortedSet[Configuration] {
@@ -443,7 +484,7 @@ func hashTarget(thc *TargetHashCache, labelAndConfiguration LabelAndConfiguratio
 		return hashRule(thc, target.Rule, configuredTarget.Configuration)
 	case build.Target_GENERATED_FILE:
 		hasher := sha256.New()
-		generatingLabel, err := ParseCanonicalLabel(*target.GeneratedFile.GeneratingRule)
+		generatingLabel, err := thc.ParseCanonicalLabel(*target.GeneratedFile.GeneratingRule)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse generated file generating rule label %s: %w", *target.GeneratedFile.GeneratingRule, err)
 		}
@@ -472,15 +513,19 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 	hasher.Write([]byte(rule.GetRuleClass()))
 	hasher.Write([]byte(rule.GetSkylarkEnvironmentHashCode()))
 	hasher.Write([]byte(configuration.GetChecksum()))
+
 	// TODO: Consider using `$internal_attr_hash` from https://github.com/bazelbuild/bazel/blob/6971b016f1e258e3bb567a0f9fe7a88ad565d8f2/src/main/java/com/google/devtools/build/lib/query2/query/output/SyntheticAttributeHashCalculator.java
 	// rather than hashing attributes ourselves.
 	// On the plus side, this builds in some heuristics from Bazel (e.g. ignoring `generator_location`).
 	// On the down side, it would even further decouple our "hashing" and "diffing" procedures.
 	for _, attr := range rule.GetAttribute() {
-		protoBytes, err := proto.Marshal(AttributeForSerialization(attr))
+		normalizedAttribute := thc.AttributeForSerialization(attr)
+
+		protoBytes, err := proto.Marshal(normalizedAttribute)
 		if err != nil {
 			return nil, err
 		}
+
 		hasher.Write(protoBytes)
 	}
 
@@ -512,7 +557,7 @@ func getConfiguredRuleInputs(thc *TargetHashCache, rule *build.Rule, ownConfigur
 	labelsAndConfigurations := make([]LabelAndConfigurations, 0)
 	if thc.bazelVersionSupportsConfiguredRuleInputs {
 		for _, configuredRuleInput := range rule.ConfiguredRuleInput {
-			ruleInputLabel, err := ParseCanonicalLabel(configuredRuleInput.GetLabel())
+			ruleInputLabel, err := thc.ParseCanonicalLabel(configuredRuleInput.GetLabel())
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse configuredRuleInput label %s: %w", configuredRuleInput.GetLabel(), err)
 			}
@@ -534,7 +579,7 @@ func getConfiguredRuleInputs(thc *TargetHashCache, rule *build.Rule, ownConfigur
 		}
 	} else {
 		for _, ruleInputLabelString := range rule.RuleInput {
-			ruleInputLabel, err := ParseCanonicalLabel(ruleInputLabelString)
+			ruleInputLabel, err := thc.ParseCanonicalLabel(ruleInputLabelString)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse ruleInput label %s: %w", ruleInputLabelString, err)
 			}

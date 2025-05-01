@@ -6,6 +6,7 @@ go_library(
         "bazel.go",
         "configurations.go",
         "hash_cache.go",
+        "normalizer.go",
         "target_determinator.go",
         "targets_list.go",
         "walker.go",
@@ -31,6 +32,7 @@ go_test(
     name = "pkg_test",
     srcs = [
         "hash_cache_test.go",
+        "normalizer_test.go",
         "target_determinator_test.go",
     ],
     data = ["//testdata/HelloWorld:all_srcs"],

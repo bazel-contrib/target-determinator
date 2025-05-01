@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -653,6 +654,46 @@ func bazelInfo(workingDirectory string, bazelCmd BazelCmd, key string) (string, 
 	return strings.TrimRight(stdoutBuf.String(), "\n"), nil
 }
 
+func retrieveRepoMapping(workspacePath string, bazelCmd BazelCmd) (map[string]string, error) {
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	result, err := bazelCmd.Execute(
+		BazelCmdConfig{Dir: workspacePath, Stdout: &stdoutBuf, Stderr: &stderrBuf},
+		nil, "mod", "dump_repo_mapping", "")
+
+	if result != 0 || err != nil {
+		log.Printf("failed to get the Bazel repository mapping: %v. Stderr:\n%v", err, stderrBuf.String())
+		return nil, err
+	}
+
+	var repoMapping map[string]string
+	unmarshalErr := json.Unmarshal(stdoutBuf.Bytes(), &repoMapping)
+	if unmarshalErr != nil {
+		log.Printf("failed to unmarshal the Bazel repository mapping: %v", err)
+		return nil, unmarshalErr
+	}
+
+	return repoMapping, nil
+
+}
+
+func NormalizeConfiguredTarget(target *analysis.ConfiguredTarget, n *Normalizer) {
+	if target.GetTarget().GetRule() != nil {
+		rule := target.GetTarget().GetRule()
+		for _, attr := range rule.GetAttribute() {
+			n.NormalizeAttribute(attr)
+		}
+
+		for idx, input := range rule.GetConfiguredRuleInput() {
+			lbl, err := n.ParseCanonicalLabel(*input.Label)
+			if err != nil {
+				value := lbl.String()
+				rule.GetConfiguredRuleInput()[idx].Label = &value
+			}
+		}
+	}
+}
+
 // Note that a non-nil QueryResults may be returned even in the error case, which will have an
 // empty target-set, but may contain other useful information (e.g. the bazel release version).
 // Checking for nil-ness of the error is the true arbiter for whether the entire query was successful.
@@ -662,6 +703,20 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to resolve the bazel release: %w", err)
 	}
 
+	var repoMapping map[string]string
+	hasBazelMod, _ := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("8.0.0")), nil)
+	if hasBazelMod != nil && *hasBazelMod {
+		var retrieveErr error
+		repoMapping, retrieveErr = retrieveRepoMapping(context.WorkspacePath, context.BazelCmd)
+		if retrieveErr != nil {
+			return nil, fmt.Errorf("failed to retrieve bazel dump repo mapping: %w", retrieveErr)
+		}
+	} else {
+		repoMapping = map[string]string{}
+	}
+
+	normalizer := Normalizer{repoMapping}
+
 	// Work around https://github.com/bazelbuild/bazel/issues/21010
 	var incompatibleTargetsToFilter map[label.Label]bool
 	hasIncompatibleTargetsBug, explanation := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("7.0.0-pre.20230628.2")), version.Must(version.NewVersion("7.4.0")))
@@ -669,7 +724,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		if !context.FilterIncompatibleTargets {
 			return nil, fmt.Errorf("requested not to filter incompatible targets, but bazel version %s has a bug requiring filtering incompatible targets - see https://github.com/bazelbuild/bazel/issues/21010", bazelRelease)
 		}
-		incompatibleTargetsToFilter, err = findCompatibleTargets(context, targets.String(), false)
+		incompatibleTargetsToFilter, err = findCompatibleTargets(context, targets.String(), false, &normalizer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find incompatible targets: %w", err)
 		}
@@ -690,13 +745,13 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 				labelsToConfigurations: nil,
 			},
 			TransitiveConfiguredTargets: nil,
-			TargetHashCache:             NewTargetHashCache(nil, bazelRelease),
+			TargetHashCache:             NewTargetHashCache(nil, &normalizer, bazelRelease),
 			BazelRelease:                bazelRelease,
 			QueryError:                  retErr,
 		}, retErr
 	}
 
-	transitiveConfiguredTargets, err := ParseCqueryResult(transitiveResult)
+	transitiveConfiguredTargets, err := ParseCqueryResult(transitiveResult, &normalizer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse cquery result: %w", err)
 	}
@@ -708,12 +763,12 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 
 	var compatibleTargets map[label.Label]bool
 	if context.FilterIncompatibleTargets {
-		if compatibleTargets, err = findCompatibleTargets(context, targets.String(), true); err != nil {
+		if compatibleTargets, err = findCompatibleTargets(context, targets.String(), true, &normalizer); err != nil {
 			return nil, fmt.Errorf("failed to find compatible targets: %w", err)
 		}
 	}
 	// Need to do this due to a change in bazel-gazelle & how equality between labels is determined.
-	// Likey happened in https://github.com/bazel-contrib/bazel-gazelle/pull/1911.
+	// Likely happened in https://github.com/bazel-contrib/bazel-gazelle/pull/1911.
 	var compatibleTargetsStrKey = make(map[string]bool, len(compatibleTargets))
 	for k, v := range compatibleTargets {
 		compatibleTargetsStrKey[k.String()] = v
@@ -723,7 +778,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	labels := make([]label.Label, 0)
 	labelsToConfigurations := make(map[label.Label][]Configuration)
 	for _, mt := range matchingTargetResults.Results {
-		l, err := labelOf(mt.Target)
+		l, err := labelOf(mt.Target, &normalizer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
 		}
@@ -754,7 +809,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	queryResults := &QueryResults{
 		MatchingTargets:             matchingTargets,
 		TransitiveConfiguredTargets: transitiveConfiguredTargets,
-		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, bazelRelease),
+		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, &normalizer, bazelRelease),
 		BazelRelease:                bazelRelease,
 		QueryError:                  nil,
 		configurations:              configurations,
@@ -799,7 +854,7 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 	return &result, nil
 }
 
-func findCompatibleTargets(context *Context, pattern string, compatibility bool) (map[label.Label]bool, error) {
+func findCompatibleTargets(context *Context, pattern string, compatibility bool, n *Normalizer) (map[label.Label]bool, error) {
 	log.Printf("Finding compatible targets under %s", pattern)
 	compatibleTargets := make(map[label.Label]bool)
 
@@ -823,7 +878,7 @@ func findCompatibleTargets(context *Context, pattern string, compatibility bool)
 		if returnVal != 0 || err != nil {
 			return nil, fmt.Errorf("failed to run compatibility-filtering cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
 		}
-		if err := addCompatibleTargetsLines(&stdout, compatibleTargets); err != nil {
+		if err := addCompatibleTargetsLines(&stdout, compatibleTargets, n); err != nil {
 			return nil, err
 		}
 	}
@@ -841,26 +896,27 @@ func findCompatibleTargets(context *Context, pattern string, compatibility bool)
 		if returnVal != 0 || err != nil {
 			return nil, fmt.Errorf("failed to run alias compatibility-filtering cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
 		}
-		if err := addCompatibleTargetsLines(&stdout, compatibleTargets); err != nil {
+		if err := addCompatibleTargetsLines(&stdout, compatibleTargets, n); err != nil {
 			return nil, err
 		}
 	}
 	return compatibleTargets, nil
 }
 
-func addCompatibleTargetsLines(r io.Reader, compatibleTargets map[label.Label]bool) error {
+func addCompatibleTargetsLines(r io.Reader, compatibleTargets map[label.Label]bool, n *Normalizer) error {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		labelStr := scanner.Text()
 		if labelStr == "" {
 			continue
 		}
-		label, err := ParseCanonicalLabel(labelStr)
+		label, err := n.ParseCanonicalLabel(labelStr)
 		if err != nil {
 			return fmt.Errorf("failed to parse label from compatibility-filtering: %q: %w", labelStr, err)
 		}
 		compatibleTargets[label] = true
 	}
+
 	return nil
 }
 
@@ -900,11 +956,11 @@ func runToLines(workingDirectory string, arg0 string, args ...string) ([]string,
 	return strings.FieldsFunc(stdoutBuf.String(), func(r rune) bool { return r == '\n' }), nil
 }
 
-func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Configuration]*analysis.ConfiguredTarget, error) {
+func ParseCqueryResult(result *analysis.CqueryResult, n *Normalizer) (map[label.Label]map[Configuration]*analysis.ConfiguredTarget, error) {
 	configuredTargets := make(map[label.Label]map[Configuration]*analysis.ConfiguredTarget, len(result.Results))
 
 	for _, target := range result.Results {
-		l, err := labelOf(target.GetTarget())
+		l, err := labelOf(target.GetTarget(), n)
 		if err != nil {
 			return nil, err
 		}
@@ -914,69 +970,31 @@ func ParseCqueryResult(result *analysis.CqueryResult) (map[label.Label]map[Confi
 			configuredTargets[l] = make(map[Configuration]*analysis.ConfiguredTarget)
 		}
 
+		NormalizeConfiguredTarget(target, n)
+
 		configuredTargets[l][NormalizeConfiguration(target.GetConfiguration().GetChecksum())] = target
 	}
+
 	return configuredTargets, nil
 }
 
-func labelOf(target *build.Target) (label.Label, error) {
+func labelOf(target *build.Target, n *Normalizer) (label.Label, error) {
 	switch target.GetType() {
 	case build.Target_RULE:
-		return ParseCanonicalLabel(target.GetRule().GetName())
+		return n.ParseCanonicalLabel(target.GetRule().GetName())
 	case build.Target_SOURCE_FILE:
-		return ParseCanonicalLabel(target.GetSourceFile().GetName())
+		return n.ParseCanonicalLabel(target.GetSourceFile().GetName())
 	case build.Target_GENERATED_FILE:
-		return ParseCanonicalLabel(target.GetGeneratedFile().GetName())
+		return n.ParseCanonicalLabel(target.GetGeneratedFile().GetName())
 	case build.Target_PACKAGE_GROUP:
-		return ParseCanonicalLabel(target.GetPackageGroup().GetName())
+		return n.ParseCanonicalLabel(target.GetPackageGroup().GetName())
 	case build.Target_ENVIRONMENT_GROUP:
-		return ParseCanonicalLabel(target.GetEnvironmentGroup().GetName())
+		return n.ParseCanonicalLabel(target.GetEnvironmentGroup().GetName())
 	default:
 		return label.NoLabel, fmt.Errorf("labelOf called on unknown target type: %v", target.GetType().String())
 	}
 }
 
-func equivalentAttributes(left, right *build.Attribute) bool {
-	return proto.Equal(AttributeForSerialization(left), AttributeForSerialization(right))
-}
-
-// AttributeForSerialization redacts details about an attribute which don't affect the output of
-// building them, and returns equivalent canonical attribute metadata.
-// In particular it redacts:
-//   - Whether an attribute was explicitly specified (because the effective value is all that
-//     matters).
-//   - Any attribute named `generator_location`, because these point to absolute paths for
-//     built-in `cc_toolchain_suite` targets such as `@local_config_cc//:toolchain`.
-func AttributeForSerialization(rawAttr *build.Attribute) *build.Attribute {
-	normalized := *rawAttr
-	normalized.ExplicitlySpecified = nil
-
-	// Redact generator_location, which typically contains absolute paths but has no bearing on the
-	// functioning of a rule.
-	// This is also done in Bazel's internal target hash computation. See:
-	// https://github.com/bazelbuild/bazel/blob/6971b016f1e258e3bb567a0f9fe7a88ad565d8f2/src/main/java/com/google/devtools/build/lib/query2/query/output/SyntheticAttributeHashCalculator.java#L78-L81
-	if normalized.Name != nil {
-		if *normalized.Name == "generator_location" {
-			normalized.StringValue = nil
-		}
-	}
-
-	return &normalized
-}
-
 func CompareLabels(a, b label.Label) bool {
 	return a.String() < b.String()
-}
-
-// ParseCanonicalLabel parses a label from a string, and removes sources of inconsequential difference which would make comparing two labels fail.
-// In particular, it treats @// the same as //
-func ParseCanonicalLabel(s string) (label.Label, error) {
-	l, err := label.Parse(s)
-	if err != nil {
-		return l, err
-	}
-	if l.Repo == "@" {
-		l.Repo = ""
-	}
-	return l, nil
 }
