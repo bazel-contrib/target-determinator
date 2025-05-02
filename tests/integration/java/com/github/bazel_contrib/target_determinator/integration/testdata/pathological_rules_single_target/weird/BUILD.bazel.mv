@@ -1,0 +1,6 @@
+load("@rules//rules:pathological.bzl", "pathological")
+
+pathological(
+    name = "pathological",
+    srcs = glob(["compute_lengths.*"]),
+)

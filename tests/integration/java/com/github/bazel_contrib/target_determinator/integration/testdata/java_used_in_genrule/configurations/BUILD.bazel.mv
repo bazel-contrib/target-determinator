@@ -1,0 +1,12 @@
+java_binary(
+    name = "jbin",
+    srcs = ["JBin.java"],
+    main_class = "JBin",
+)
+
+genrule(
+    name = "run_jbin",
+    tools = [":jbin"],
+    cmd = "$(execpath :jbin) hello world > $@",
+    outs = ["out"],
+)

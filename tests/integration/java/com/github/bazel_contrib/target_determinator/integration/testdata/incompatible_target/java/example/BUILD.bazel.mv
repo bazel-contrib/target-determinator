@@ -1,0 +1,12 @@
+load("@rules_java//java:defs.bzl", "java_test")
+
+java_test(
+    name = "CompatibleTest",
+    srcs = ["ExampleTest.java"],
+)
+
+java_test(
+    name = "IncompatibleTest",
+    srcs = ["ExampleTest.java"],
+    target_compatible_with = ["@platforms//:incompatible"],
+)
