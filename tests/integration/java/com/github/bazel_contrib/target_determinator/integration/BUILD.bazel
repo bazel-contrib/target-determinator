@@ -1,56 +1,5 @@
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
-load("@rules_java//java:defs.bzl", "java_library", "java_test")
 load("@rules_jvm_external//:defs.bzl", "artifact")
-
-java_test(
-    name = "BazelDiffIntegrationTest",
-    timeout = "long",
-    srcs = [
-        "BazelDiffIntegrationTest.java",
-    ],
-    data = ["@bazel-diff//file:bazel-diff.jar"],
-    env_inherit = ["CC"],
-    jvm_flags = [
-        "-Dbazel_diff=$(rootpath @bazel-diff//file:bazel-diff.jar)",
-    ],
-    tags = [
-        "manual",
-        "no-sandbox",
-    ],
-    deps = [
-        ":tests",
-        ":util",
-        artifact("com.google.guava:guava"),
-        artifact("com.google.code.findbugs:jsr305"),
-        artifact("junit:junit"),
-        "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
-    ],
-)
-
-java_test(
-    name = "BazelDifferIntegrationTest",
-    timeout = "long",
-    srcs = [
-        "BazelDifferIntegrationTest.java",
-    ],
-    data = [":bazel-differ-binary"],
-    env_inherit = ["CC"],
-    jvm_flags = [
-        "-Dbazel_differ=$(rootpath :bazel-differ-binary)",
-    ],
-    tags = [
-        "manual",
-        "no-sandbox",
-    ],
-    deps = [
-        ":tests",
-        ":util",
-        artifact("com.google.guava:guava"),
-        artifact("com.google.code.findbugs:jsr305"),
-        artifact("junit:junit"),
-        "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
-    ],
-)
 
 java_test(
     name = "TargetDeterminatorIntegrationTest",
@@ -63,7 +12,7 @@ java_test(
     jvm_flags = [
         "-Dtarget_determinator=$(rootpath //target-determinator)",
     ],
-    shard_count = 3,
+    shard_count = 5,
     tags = ["no-sandbox"],
     deps = [
         ":tests",
@@ -127,15 +76,4 @@ java_library(
         artifact("org.eclipse.jgit:org.eclipse.jgit"),
         artifact("org.hamcrest:hamcrest-all"),
     ],
-)
-
-copy_file(
-    name = "bazel-differ-binary",
-    src = ":original-bazel-differ",
-    out = "bazel-differ",
-)
-
-alias(
-    name = "original-bazel-differ",
-    actual = "@multitool//tools/bazel-differ",
 )

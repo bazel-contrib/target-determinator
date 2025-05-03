@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "pkg",
@@ -6,6 +6,7 @@ go_library(
         "bazel.go",
         "configurations.go",
         "hash_cache.go",
+        "normalizer.go",
         "target_determinator.go",
         "targets_list.go",
         "walker.go",
@@ -19,7 +20,7 @@ go_library(
         "//third_party/protobuf/bazel/analysis",
         "//third_party/protobuf/bazel/build",
         "@com_github_aristanetworks_goarista//path",
-        "@com_github_bazelbuild_bazel_gazelle//label",
+        "@gazelle//label",
         "@com_github_hashicorp_go_version//:go-version",
         "@com_github_wi2l_jsondiff//:jsondiff",
         "@org_golang_google_protobuf//encoding/protojson",
@@ -31,6 +32,7 @@ go_test(
     name = "pkg_test",
     srcs = [
         "hash_cache_test.go",
+        "normalizer_test.go",
         "target_determinator_test.go",
     ],
     data = ["//testdata/HelloWorld:all_srcs"],
@@ -40,7 +42,7 @@ go_test(
         "//common",
         "//third_party/protobuf/bazel/analysis",
         "//third_party/protobuf/bazel/build",
-        "@com_github_bazelbuild_bazel_gazelle//label",
+        "@gazelle//label",
         "@com_github_otiai10_copy//:copy",
         "@org_golang_google_protobuf//proto",
     ],
