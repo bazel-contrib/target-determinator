@@ -10,7 +10,7 @@ go_library(
         "//cli",
         "//pkg",
         "//third_party/protobuf/bazel/analysis",
-        "@gazelle//label",
+        "@bazel_gazelle//label:go_default_library",
     ],
 )
 
