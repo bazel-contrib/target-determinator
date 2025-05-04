@@ -4,5 +4,5 @@ package tools
 
 import (
 	_ "github.com/aristanetworks/goarista/cmd/importsort"
-	_ "golang.org/x/tools"
+	_ "golang.org/x/tools/cmd/goimports"
 )
