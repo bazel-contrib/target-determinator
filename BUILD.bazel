@@ -1,7 +1,5 @@
 load("@bazel_gazelle//:def.bzl", "gazelle")
 
-# gazelle:resolve go github.com/bazelbuild/bazel-gazelle/label @com_github_bazelbuild_bazel_gazelle//label
-
 # gazelle:prefix github.com/bazel-contrib/target-determinator
 gazelle(
     name = "gazelle",
