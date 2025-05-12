@@ -1,4 +1,5 @@
 /bazel-*
 /.ijwb/
+/.idea/
 
 /third_party/protobuf/bazel/*/*.pb.go
