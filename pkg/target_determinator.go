@@ -633,27 +633,6 @@ func clearAnalysisCache(context *Context) error {
 	}
 }
 
-func BazelOutputBase(workingDirectory string, BazelCmd BazelCmd) (string, error) {
-	return bazelInfo(workingDirectory, BazelCmd, "output_base")
-}
-
-func BazelRelease(workingDirectory string, BazelCmd BazelCmd) (string, error) {
-	return bazelInfo(workingDirectory, BazelCmd, "release")
-}
-
-func bazelInfo(workingDirectory string, bazelCmd BazelCmd, key string) (string, error) {
-	var stdoutBuf, stderrBuf bytes.Buffer
-
-	result, err := bazelCmd.Execute(
-		BazelCmdConfig{Dir: workingDirectory, Stdout: &stdoutBuf, Stderr: &stderrBuf},
-		nil, "info", key)
-
-	if result != 0 || err != nil {
-		return "", fmt.Errorf("failed to get the Bazel %v: %w. Stderr:\n%v", key, err, stderrBuf.String())
-	}
-	return strings.TrimRight(stdoutBuf.String(), "\n"), nil
-}
-
 func retrieveRepoMapping(workspacePath string, bazelCmd BazelCmd) (map[string]string, error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
 
@@ -703,9 +682,13 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to resolve the bazel release: %w", err)
 	}
 
+	hasBzlmod, err := IsBzlmodEnabled(context.WorkspacePath, context.BazelCmd, bazelRelease)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine if bzlmod is enabled: %w", err)
+	}
+
 	var repoMapping map[string]string
-	hasBazelMod, _ := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("8.0.0")), nil)
-	if hasBazelMod != nil && *hasBazelMod {
+	if hasBzlmod {
 		var retrieveErr error
 		repoMapping, retrieveErr = retrieveRepoMapping(context.WorkspacePath, context.BazelCmd)
 		if retrieveErr != nil {
