@@ -1,8 +1,13 @@
 package pkg
 
 import (
+	"fmt"
 	"io"
+	"os"
 	"os/exec"
+
+	"github.com/bazel-contrib/target-determinator/common/versions"
+	"github.com/hashicorp/go-version"
 )
 
 type BazelCmdConfig struct {
@@ -19,6 +24,7 @@ type BazelCmdConfig struct {
 
 type BazelCmd interface {
 	Execute(config BazelCmdConfig, startupArgs []string, command string, args ...string) (int, error)
+	Cquery(bazelRelease string, config BazelCmdConfig, startupArgs []string, args ...string) (int, error)
 }
 
 type DefaultBazelCmd struct {
@@ -60,4 +66,38 @@ func (c DefaultBazelCmd) Execute(config BazelCmdConfig, startupArgs []string, co
 		}
 	}
 	return 0, nil
+}
+
+// Cquery calls bazel cquery with the provided arguments, using an output file if supported.
+// It returns the exit status code or -1 if it errored before the process could start.
+func (c DefaultBazelCmd) Cquery(bazelRelease string, config BazelCmdConfig, startupArgs []string, args ...string) (int, error) {
+	hasOutputFile, _ := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("8.2.0")), nil)
+	if hasOutputFile == nil || !*hasOutputFile {
+		// --output_file is not supported (or we weren't able to tell), so we let cquery print to stdout.
+		return c.Execute(config, startupArgs, "cquery", args...)
+	}
+
+	cqueryOutputFile, err := os.CreateTemp("", "target-determinator-cquery-*.proto")
+	if err != nil {
+		return 1, fmt.Errorf("failed to create temporary file for cquery output: %w", err)
+	}
+	cqueryOutput := cqueryOutputFile.Name()
+	defer os.Remove(cqueryOutput)
+	err = cqueryOutputFile.Close()
+	if err != nil {
+		return 1, fmt.Errorf("failed to close temporary file for cquery output: %w", err)
+	}
+
+	exitCode, err := c.Execute(config, startupArgs, "cquery", append(args, "--output_file="+cqueryOutput)...)
+
+	cqueryOutputFile, err = os.Open(cqueryOutput)
+	if err != nil {
+		return exitCode, fmt.Errorf("failed to open cquery output file %s for reading: %w", cqueryOutput, err)
+	}
+	defer cqueryOutputFile.Close()
+	if _, err = io.Copy(config.Stdout, cqueryOutputFile); err != nil {
+		return exitCode, fmt.Errorf("failed to read cquery output: %w", err)
+	}
+
+	return exitCode, err
 }

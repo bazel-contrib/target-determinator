@@ -710,7 +710,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		if !context.FilterIncompatibleTargets {
 			return nil, fmt.Errorf("requested not to filter incompatible targets, but bazel version %s has a bug requiring filtering incompatible targets - see https://github.com/bazelbuild/bazel/issues/21010", bazelRelease)
 		}
-		incompatibleTargetsToFilter, err = findCompatibleTargets(context, targets.String(), false, &normalizer)
+		incompatibleTargetsToFilter, err = findCompatibleTargets(context, targets.String(), false, &normalizer, bazelRelease)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find incompatible targets: %w", err)
 		}
@@ -722,7 +722,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	if len(incompatibleTargetsToFilter) > 0 {
 		depsPattern += " - " + strings.Join(sortedStringKeys(incompatibleTargetsToFilter), " - ")
 	}
-	transitiveResult, err := runToCqueryResult(context, depsPattern, true)
+	transitiveResult, err := runToCqueryResult(context, depsPattern, true, bazelRelease)
 	if err != nil {
 		retErr := fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
 		return &QueryResults{
@@ -742,14 +742,14 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to parse cquery result: %w", err)
 	}
 
-	matchingTargetResults, err := runToCqueryResult(context, targets.String(), false)
+	matchingTargetResults, err := runToCqueryResult(context, targets.String(), false, bazelRelease)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
 
 	var compatibleTargets map[label.Label]bool
 	if context.FilterIncompatibleTargets {
-		if compatibleTargets, err = findCompatibleTargets(context, targets.String(), true, &normalizer); err != nil {
+		if compatibleTargets, err = findCompatibleTargets(context, targets.String(), true, &normalizer, bazelRelease); err != nil {
 			return nil, fmt.Errorf("failed to find compatible targets: %w", err)
 		}
 	}
@@ -812,7 +812,7 @@ func sortedStringKeys[V any](m map[label.Label]V) []string {
 	return keys
 }
 
-func runToCqueryResult(context *Context, pattern string, includeTransitions bool) (*analysis.CqueryResult, error) {
+func runToCqueryResult(context *Context, pattern string, includeTransitions bool, bazelRelease string) (*analysis.CqueryResult, error) {
 	log.Printf("Running cquery on %s", pattern)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -823,9 +823,11 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 	}
 	args = append(args, pattern)
 
-	returnVal, err := context.BazelCmd.Execute(
+	returnVal, err := context.BazelCmd.Cquery(
+		bazelRelease,
 		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
-		[]string{"--output_base", context.BazelOutputBase}, "cquery", args...)
+		[]string{"--output_base", context.BazelOutputBase},
+		args...)
 
 	if returnVal != 0 || err != nil {
 		return nil, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
@@ -840,7 +842,7 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 	return &result, nil
 }
 
-func findCompatibleTargets(context *Context, pattern string, compatibility bool, n *Normalizer) (map[label.Label]bool, error) {
+func findCompatibleTargets(context *Context, pattern string, compatibility bool, n *Normalizer, bazelRelease string) (map[label.Label]bool, error) {
 	log.Printf("Finding compatible targets under %s", pattern)
 	compatibleTargets := make(map[label.Label]bool)
 
@@ -855,9 +857,11 @@ func findCompatibleTargets(context *Context, pattern string, compatibility bool,
 	{
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
-		returnVal, err := context.BazelCmd.Execute(
+		returnVal, err := context.BazelCmd.Cquery(
+			bazelRelease,
 			BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
-			[]string{"--output_base", context.BazelOutputBase}, "cquery", fmt.Sprintf("%s - kind(alias, %s)", pattern, pattern),
+			[]string{"--output_base", context.BazelOutputBase},
+			fmt.Sprintf("%s - kind(alias, %s)", pattern, pattern),
 			"--output=starlark",
 			"--starlark:expr=target.label"+queryFilter,
 		)
@@ -872,9 +876,11 @@ func findCompatibleTargets(context *Context, pattern string, compatibility bool,
 	{
 		var stdout bytes.Buffer
 		var stderr bytes.Buffer
-		returnVal, err := context.BazelCmd.Execute(
+		returnVal, err := context.BazelCmd.Cquery(
+			bazelRelease,
 			BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
-			[]string{"--output_base", context.BazelOutputBase}, "cquery", fmt.Sprintf("kind(alias, %s)", pattern),
+			[]string{"--output_base", context.BazelOutputBase},
+			fmt.Sprintf("kind(alias, %s)", pattern),
 			"--output=starlark",
 			// Example output of `repr(target)` for an alias target: `<alias target //java/example:example_test of //java/example:OtherExampleTest>`
 			"--starlark:expr=repr(target).split(\" \")[2]"+queryFilter,
