@@ -6,6 +6,11 @@ on:
   workflow_dispatch:
 jobs:
   presubmit:
+    strategy:
+      matrix:
+        bazel:
+          - 7.*
+          - 8.*
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -15,4 +20,5 @@ jobs:
         env:
           # Bazelisk will download bazel to here, ensure it is cached within tests.
           XDG_CACHE_HOME: /home/runner/.cache/bazel-repo
+          USE_BAZEL_VERSION: ${{ matrix.bazel }}
         run: bazel --bazelrc=.github/workflows/ci.bazelrc --bazelrc=.bazelrc test //...
