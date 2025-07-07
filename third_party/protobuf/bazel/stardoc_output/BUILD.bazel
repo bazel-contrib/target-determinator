@@ -1,0 +1,24 @@
+load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("//rules:copy_proto_output.bzl", "copy_proto_output")
+
+# Vendor stardoc_output.proto from Bazel as its target under @bazel_tools isn't visible to us.
+# keep
+proto_library(
+    name = "stardoc_output_lib",
+    srcs = ["stardoc_output.proto"],
+    import_prefix = "src/main/protobuf",
+    strip_import_prefix = "",
+)
+
+go_proto_library(
+    name = "stardoc_output",
+    importpath = "github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/stardoc_output",
+    proto = ":stardoc_output_lib",
+    visibility = ["//visibility:public"],
+)
+
+copy_proto_output(
+    name = "copy_stardoc_output",
+    proto_library = ":stardoc_output",
+)
