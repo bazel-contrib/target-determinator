@@ -6,6 +6,7 @@ go_proto_library(
     importpath = "github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build",
     proto = "@bazel_tools//src/main/protobuf:build_proto",
     visibility = ["//visibility:public"],
+    deps = ["//third_party/protobuf/bazel/stardoc_output"],
 )
 
 copy_proto_output(
