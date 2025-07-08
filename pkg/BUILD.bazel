@@ -4,6 +4,7 @@ go_library(
     name = "pkg",
     srcs = [
         "bazel.go",
+        "bazel_info.go",
         "configurations.go",
         "hash_cache.go",
         "normalizer.go",
