@@ -682,13 +682,16 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		return nil, fmt.Errorf("failed to resolve the bazel release: %w", err)
 	}
 
+	// The `bazel mod dump_repo_mapping` subcommand was added in Bazel 7.1.2.
+	canRetrieveMapping, _ := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("7.1.2")), nil)
+
 	hasBzlmod, err := IsBzlmodEnabled(context.WorkspacePath, context.BazelCmd, bazelRelease)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine if bzlmod is enabled: %w", err)
 	}
 
 	var repoMapping map[string]string
-	if hasBzlmod {
+	if hasBzlmod && (canRetrieveMapping != nil && *canRetrieveMapping) {
 		var retrieveErr error
 		repoMapping, retrieveErr = retrieveRepoMapping(context.WorkspacePath, context.BazelCmd)
 		if retrieveErr != nil {
