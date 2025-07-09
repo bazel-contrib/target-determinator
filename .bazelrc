@@ -12,3 +12,7 @@ common --per_file_copt=external/.*grpc.*@--GRPC_WAS_NOT_SUPPOSED_TO_BE_BUILT
 common --host_per_file_copt=external/.*grpc.*@--GRPC_WAS_NOT_SUPPOSED_TO_BE_BUILT
 
 common --incompatible_enable_proto_toolchain_resolution
+
+# Allow tests to find bazelisk without unnecessary cache thrashing
+common --incompatible_strict_action_env
+common --test_env=PATH
