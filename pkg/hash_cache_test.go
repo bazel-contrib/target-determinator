@@ -381,7 +381,7 @@ func layoutProject(t *testing.T) (string, *analysis.CqueryResult) {
 
 func parseResult(t *testing.T, result *analysis.CqueryResult, bazelRelease string) *TargetHashCache {
 	n := Normalizer{}
-	cqueryResult, err := ParseCqueryResult(result, &n)
+	cqueryResult, err := ParseCqueryResult(result.Results, &n)
 	if err != nil {
 		t.Fatalf("Failed to parse cquery result: %v", err)
 	}

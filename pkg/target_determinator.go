@@ -28,6 +28,7 @@ import (
 	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
 	"github.com/bazelbuild/bazel-gazelle/label"
 	"github.com/hashicorp/go-version"
+	"google.golang.org/protobuf/encoding/protodelim"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -763,7 +764,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	log.Println("Matching labels to configurations")
 	labels := make([]label.Label, 0)
 	labelsToConfigurations := make(map[label.Label][]Configuration)
-	for _, mt := range matchingTargetResults.Results {
+	for _, mt := range matchingTargetResults {
 		l, err := labelOf(mt.Target, &normalizer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse label returned from query %s: %w", mt.Target, err)
@@ -812,12 +813,19 @@ func sortedStringKeys[V any](m map[label.Label]V) []string {
 	return keys
 }
 
-func runToCqueryResult(context *Context, pattern string, includeTransitions bool, bazelRelease string) (*analysis.CqueryResult, error) {
+func runToCqueryResult(context *Context, pattern string, includeTransitions bool, bazelRelease string) ([]*analysis.ConfiguredTarget, error) {
 	log.Printf("Running cquery on %s", pattern)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	args := []string{"--output=proto"}
+	useStreamedProtoPtr, _ := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("8.2.0")), nil)
+	useStreamedProto := useStreamedProtoPtr != nil && *useStreamedProtoPtr
+	var args []string
+	if useStreamedProto {
+		args = append(args, "--output=streamed_proto")
+	} else {
+		args = append(args, "--output=proto")
+	}
 	if includeTransitions {
 		args = append(args, "--transitions=lite")
 	}
@@ -833,13 +841,26 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 		return nil, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
 	}
 
-	content := stdout.Bytes()
-
-	var result analysis.CqueryResult
-	if err := proto.Unmarshal(content, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal cquery stdout: %w", err)
+	if useStreamedProto {
+		var targets []*analysis.ConfiguredTarget
+		unmarshalOpts := protodelim.UnmarshalOptions{MaxSize: -1}
+		for {
+			var target analysis.ConfiguredTarget
+			if err = unmarshalOpts.UnmarshalFrom(&stdout, &target); err == io.EOF {
+				break
+			} else if err != nil {
+				return nil, fmt.Errorf("failed to unmarshal streamed cquery stdout: %w", err)
+			}
+			targets = append(targets, &target)
+		}
+		return targets, nil
+	} else {
+		var result analysis.CqueryResult
+		if err = proto.Unmarshal(stdout.Bytes(), &result); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal cquery stdout: %w", err)
+		}
+		return result.GetResults(), nil
 	}
-	return &result, nil
 }
 
 func findCompatibleTargets(context *Context, pattern string, compatibility bool, n *Normalizer, bazelRelease string) (map[label.Label]bool, error) {
@@ -948,10 +969,10 @@ func runToLines(workingDirectory string, arg0 string, args ...string) ([]string,
 	return strings.FieldsFunc(stdoutBuf.String(), func(r rune) bool { return r == '\n' }), nil
 }
 
-func ParseCqueryResult(result *analysis.CqueryResult, n *Normalizer) (map[label.Label]map[Configuration]*analysis.ConfiguredTarget, error) {
-	configuredTargets := make(map[label.Label]map[Configuration]*analysis.ConfiguredTarget, len(result.Results))
+func ParseCqueryResult(targets []*analysis.ConfiguredTarget, n *Normalizer) (map[label.Label]map[Configuration]*analysis.ConfiguredTarget, error) {
+	configuredTargets := make(map[label.Label]map[Configuration]*analysis.ConfiguredTarget, len(targets))
 
-	for _, target := range result.Results {
+	for _, target := range targets {
 		l, err := labelOf(target.GetTarget(), n)
 		if err != nil {
 			return nil, err
