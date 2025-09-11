@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("//rules:multi_platform_go_binary.bzl", "multi_platform_go_binary")
+
+go_library(
+    name = "hash-differ_lib",
+    srcs = ["hash-differ.go"],
+    importpath = "github.com/bazel-contrib/target-determinator/hash-differ",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//pkg",
+    ],
+)
+
+multi_platform_go_binary(
+    name = "hash-differ",
+    embed = [":hash-differ_lib"],
+    visibility = ["//visibility:public"],
+)

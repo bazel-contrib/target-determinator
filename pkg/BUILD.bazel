@@ -8,6 +8,7 @@ go_library(
         "cache.go",
         "configurations.go",
         "hash_cache.go",
+        "hash_persistence.go",
         "normalizer.go",
         "target_determinator.go",
         "targets_list.go",

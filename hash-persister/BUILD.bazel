@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("//rules:multi_platform_go_binary.bzl", "multi_platform_go_binary")
+
+go_library(
+    name = "hash-persister_lib",
+    srcs = ["hash-persister.go"],
+    importpath = "github.com/bazel-contrib/target-determinator/hash-persister",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//cli",
+        "//pkg",
+    ],
+)
+
+multi_platform_go_binary(
+    name = "hash-persister",
+    embed = [":hash-persister_lib"],
+    visibility = ["//visibility:public"],
+)
