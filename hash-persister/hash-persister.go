@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -48,6 +49,13 @@ func main() {
 		fmt.Println("Hash Persister invocation Error")
 		log.Fatalf("Error during preprocessing: %v", err)
 	}
+
+	defer func() {
+		innerErr := gitCheckout(config.Context.WorkspacePath, config.Context.OriginalRevision)
+		if innerErr != nil && err == nil {
+			err = fmt.Errorf("failed to check out original commit during cleanup: %v", innerErr)
+		}
+	}()
 
 	// Create LabelledGitRev for the specified commit
 	commitRev, err := pkg.NewLabelledGitRev(config.Context.WorkspacePath, config.CommitSha, "commit")
@@ -111,7 +119,7 @@ func resolveConfig(flags hashPersisterFlags) (*config, error) {
 		return nil, fmt.Errorf("failed to get current git revision: %w", err)
 	}
 
-	afterRev, err := pkg.NewLabelledGitRev(workingDirectory, currentBranch, "current")
+	currentRev, err := pkg.NewLabelledGitRev(workingDirectory, currentBranch, "current")
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve the current git revision: %w", err)
 	}
@@ -129,7 +137,7 @@ func resolveConfig(flags hashPersisterFlags) (*config, error) {
 
 	context := &pkg.Context{
 		WorkspacePath:                          workingDirectory,
-		OriginalRevision:                       afterRev,
+		OriginalRevision:                       currentRev,
 		BazelCmd:                               bazelCmd,
 		BazelOutputBase:                        outputBase,
 		DeleteCachedWorktree:                   flags.commonFlags.DeleteCachedWorktree,
@@ -160,4 +168,13 @@ func resolveConfig(flags hashPersisterFlags) (*config, error) {
 		Targets:    targetsList,
 		OutputFile: flags.outputFile,
 	}, nil
+}
+
+func gitCheckout(workingDirectory string, rev pkg.LabelledGitRev) error {
+	gitCmd := exec.Command("git", "checkout", rev.GitRevision.Revision)
+	gitCmd.Dir = workingDirectory
+	if output, err := gitCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to check out %s: %w. Output: %v", rev, err, string(output))
+	}
+	return nil
 }
