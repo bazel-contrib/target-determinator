@@ -845,13 +845,13 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 		var targets []*analysis.ConfiguredTarget
 		unmarshalOpts := protodelim.UnmarshalOptions{MaxSize: -1}
 		for {
-			var target analysis.ConfiguredTarget
-			if err = unmarshalOpts.UnmarshalFrom(&stdout, &target); err == io.EOF {
+			var singleTargetResult analysis.CqueryResult
+			if err = unmarshalOpts.UnmarshalFrom(&stdout, &singleTargetResult); err == io.EOF {
 				break
 			} else if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal streamed cquery stdout: %w", err)
 			}
-			targets = append(targets, &target)
+			targets = append(targets, singleTargetResult.Results...)
 		}
 		return targets, nil
 	} else {
