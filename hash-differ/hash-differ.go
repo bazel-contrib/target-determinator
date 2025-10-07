@@ -15,11 +15,12 @@ import (
 )
 
 type hashDifferFlags struct {
-	beforeFile   string
-	afterFile    string
-	outputFormat string
-	outputFile   string
-	verbose      bool
+	beforeFile     string
+	afterFile      string
+	outputFormat   string
+	outputFile     string
+	includeRemoved bool
+	verbose        bool
 }
 
 func main() {
@@ -58,7 +59,7 @@ func main() {
 	case "json":
 		err = outputJSON(result, flags.outputFile)
 	case "targets":
-		err = outputTargetList(result, flags.outputFile)
+		err = outputTargetList(result, flags.outputFile, flags.includeRemoved)
 	case "summary":
 		err = outputSummary(result, flags.outputFile)
 	default:
@@ -81,6 +82,7 @@ func parseFlags() (*hashDifferFlags, error) {
 
 	flag.StringVar(&flags.outputFormat, "format", "targets", "Output format: json, targets, or summary")
 	flag.StringVar(&flags.outputFile, "output", "", "Output file (default: stdout)")
+	flag.BoolVar(&flags.includeRemoved, "include-removed", false, "Whether to include removed targets when output format is targets (default: false)")
 	flag.BoolVar(&flags.verbose, "verbose", false, "Enable verbose logging")
 
 	flag.Parse()
@@ -133,7 +135,7 @@ func outputJSON(result *pkg.HashComparisonResult, outputFile string) error {
 	return encoder.Encode(result)
 }
 
-func outputTargetList(result *pkg.HashComparisonResult, outputFile string) error {
+func outputTargetList(result *pkg.HashComparisonResult, outputFile string, includeRemoved bool) error {
 	var output *os.File
 	var err error
 
@@ -149,8 +151,12 @@ func outputTargetList(result *pkg.HashComparisonResult, outputFile string) error
 
 	// Output one target label per line (compatible with target-determinator output)
 	for _, target := range result.Summary.AffectedTargets {
-		if _, err := fmt.Fprintln(output, target); err != nil {
-			return fmt.Errorf("failed to write target: %w", err)
+		// if the target has been removed completely from the after target set, we don't print,
+		// unless include-removed flag is set to true
+		if result.Summary.AfterTargets[target] || includeRemoved {
+			if _, err := fmt.Fprintln(output, target); err != nil {
+				return fmt.Errorf("failed to write target: %w", err)
+			}
 		}
 	}
 

@@ -139,6 +139,8 @@ type HashComparisonSummary struct {
 	TotalRemoved int `json:"total_removed"`
 	// AffectedTargets is a sorted list of unique target labels that were affected
 	AffectedTargets []string `json:"affected_targets"`
+	// AfterTargets is a set of target labels that exist in after data
+	AfterTargets map[string]bool `json:"after_targets"`
 }
 
 // CompareHashFiles compares two persisted hash files and returns the differences
@@ -234,9 +236,15 @@ func CompareHashFiles(beforeFile, afterFile string) (*HashComparisonResult, erro
 	}
 	sort.Strings(affectedTargets)
 
+	afterTargetsSet := make(map[string]bool, len(afterData.TargetHashes))
+	for label := range afterData.TargetHashes {
+		afterTargetsSet[label] = true
+	}
+
 	// Calculate summary statistics
 	summary := HashComparisonSummary{
 		AffectedTargets: affectedTargets,
+		AfterTargets:    afterTargetsSet,
 	}
 	for _, diff := range differences {
 		switch diff.Status {
