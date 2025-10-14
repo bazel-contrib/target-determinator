@@ -24,6 +24,15 @@ Where <before-revision> may be any commit revision - full commit hashes, short c
 
 This binary lists targets to stdout, one-per-line, which were affected between <before-revision> and the currently checked-out revision.
 
+## hash-persister and hash-differ binaries
+
+Target Determinator now includes hash persistence capabilities for optimized CI workflows:
+
+- **hash-persister**: Computes and saves target hashes for a specific git commit to a JSON file, enabling efficient comparison without recomputing hashes later.
+- **hash-differ**: Compares two persisted hash files to identify changed, added, or removed targets between commits, supporting multiple output formats (JSON, target list, summary).
+
+These tools enable faster target determination in CI by pre-computing hashes once per commit and reusing them across multiple comparisons.
+
 ## driver binary
 
 `driver` is a binary which implements a simple CI pipeline; it runs the same logic as `target-determinator`, then tests all identified targets.
