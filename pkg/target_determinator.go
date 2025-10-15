@@ -805,16 +805,10 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		}, retErr
 	}
 
-	type parseResult struct {
-		transitiveConfiguredTargets map[label.Label]map[Configuration]*analysis.ConfiguredTarget
-		err                         error
+	transitiveConfiguredTargets, err := ParseCqueryResult(transitiveResult, &normalizer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse cquery result: %w", err)
 	}
-	parseResultCh := make(chan parseResult, 1)
-	go func() {
-		log.Println("Parsing transitive result")
-		transitiveConfiguredTargets, err := ParseCqueryResult(transitiveResult, &normalizer)
-		parseResultCh <- parseResult{transitiveConfiguredTargets, err}
-	}()
 
 	matchingTargetResults, err := runToCqueryResult(context, targets.String(), false, bazelRelease)
 	if err != nil {
@@ -865,12 +859,6 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to interpret configurations output: %w", err)
 	}
-
-	parseRes := <-parseResultCh
-	if parseRes.err != nil {
-		return nil, fmt.Errorf("failed to parse cquery result: %w", parseRes.err)
-	}
-	transitiveConfiguredTargets := parseRes.transitiveConfiguredTargets
 
 	queryResults := &QueryResults{
 		MatchingTargets:             matchingTargets,
