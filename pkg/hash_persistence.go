@@ -145,15 +145,38 @@ type HashComparisonSummary struct {
 
 // CompareHashFiles compares two persisted hash files and returns the differences
 func CompareHashFiles(beforeFile, afterFile string) (*HashComparisonResult, error) {
-	beforeData, err := LoadPersistedHashes(beforeFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load before hash file: %w", err)
+	// Load files in parallel
+	type loadResult struct {
+		data *PersistedHashData
+		err  error
 	}
 
-	afterData, err := LoadPersistedHashes(afterFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load after hash file: %w", err)
+	beforeChan := make(chan loadResult, 1)
+	afterChan := make(chan loadResult, 1)
+
+	go func() {
+		data, err := LoadPersistedHashes(beforeFile)
+		beforeChan <- loadResult{data: data, err: err}
+	}()
+
+	go func() {
+		data, err := LoadPersistedHashes(afterFile)
+		afterChan <- loadResult{data: data, err: err}
+	}()
+
+	beforeResult := <-beforeChan
+	afterResult := <-afterChan
+
+	if beforeResult.err != nil {
+		return nil, fmt.Errorf("failed to load before hash file: %w", beforeResult.err)
 	}
+
+	if afterResult.err != nil {
+		return nil, fmt.Errorf("failed to load after hash file: %w", afterResult.err)
+	}
+
+	beforeData := beforeResult.data
+	afterData := afterResult.data
 
 	var differences []HashDiff
 	affectedTargetsSet := make(map[string]bool)
