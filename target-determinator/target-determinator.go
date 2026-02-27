@@ -109,6 +109,8 @@ func resolveConfig(flags targetDeterminatorFlags) (*config, error) {
 		return nil, err
 	}
 
+	commonArgs.Context.IncludeDifferences = flags.verbose
+
 	return &config{
 		Context:        commonArgs.Context,
 		RevisionBefore: commonArgs.RevisionBefore,

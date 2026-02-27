@@ -222,7 +222,8 @@ public class TargetDeterminatorSpecificFlagsTest {
         Stream.of("--working-directory",
             testDir.toString(),
             "--bazel", "bazelisk",
-            "--targets", targets
+            "--targets", targets,
+            "--nocache_results"
         ),
         flags.stream()
     ).collect(Collectors.toList());

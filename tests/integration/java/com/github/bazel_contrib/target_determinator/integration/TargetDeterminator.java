@@ -42,7 +42,7 @@ public class TargetDeterminator {
   }
 
   public static Path getWorktreePath(Path workingDirectory) {
-    Path cacheDir = Paths.get(System.getProperty("user.home"), ".cache", "target-determinator");
+    Path cacheDir = Paths.get(System.getProperty("user.home"), ".cache", "target-determinator", "worktrees");
     String workingDirHash = Hashing.sha1().hashString(workingDirectory.toString(), Charsets.UTF_8).toString();
     return cacheDir.resolve(String.format("td-worktree-%s-%s", workingDirectory.getFileName(), workingDirHash));
   }

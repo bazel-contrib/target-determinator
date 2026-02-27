@@ -9,6 +9,10 @@ import (
 	"github.com/bazelbuild/bazel-gazelle/label"
 )
 
+// WalkCallback is called once per affected (label, configuration) pair.
+// differences explains why the target was affected; it is nil when includeDifferences is false.
+// configuredTarget is the "after" ConfiguredTarget proto; it may be nil when results are
+// served from cache (i.e. when the -cache-dir flag is used without -verbose).
 type WalkCallback func(label.Label, []Difference, *analysis.ConfiguredTarget)
 
 // WalkAffectedTargets computes which targets have changed between two commits, and calls

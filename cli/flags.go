@@ -3,7 +3,9 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -79,6 +81,8 @@ type CommonFlags struct {
 	AnalysisCacheClearStrategy             *string
 	CompareQueriesAroundAnalysisCacheClear bool
 	FilterIncompatibleTargets              bool
+	CacheDirectory                         *string
+	NoCacheResults                         bool
 }
 
 func StrPtr() *string {
@@ -101,6 +105,8 @@ func RegisterCommonFlags() *CommonFlags {
 		AnalysisCacheClearStrategy:             StrPtr(),
 		CompareQueriesAroundAnalysisCacheClear: false,
 		FilterIncompatibleTargets:              true,
+		CacheDirectory:                         StrPtr(),
+		NoCacheResults:                         false,
 	}
 	flag.BoolVar(&commonFlags.Version, "version", false, "Print the version of the tool and exit.")
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
@@ -121,7 +127,17 @@ func RegisterCommonFlags() *CommonFlags {
 	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "skip", "Strategy for clearing the analysis cache. Accepted values: skip,shutdown,discard.")
 	flag.BoolVar(&commonFlags.CompareQueriesAroundAnalysisCacheClear, "compare-queries-around-analysis-cache-clear", false, "Whether to check for query result differences before and after analysis cache clears. This is a temporary flag for performing real-world analysis.")
 	flag.BoolVar(&commonFlags.FilterIncompatibleTargets, "filter-incompatible-targets", true, "Whether to filter out incompatible targets from the candidate set of affected targets.")
+	flag.StringVar(commonFlags.CacheDirectory, "cache-dir", defaultCacheDir(), "Cache directory to avoid existing re-computations. Note: home- and system- bazelrc files, environment variables, and host hardware/OS are not included in the results cache key. Use --nocache_results if necessary.")
+	flag.BoolVar(&commonFlags.NoCacheResults, "nocache_results", false, "Disable loading and saving of results to the cache.")
 	return &commonFlags
+}
+
+func defaultCacheDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("failed to determine home dir: %v. Caching will be disabled.", err)
+	}
+	return path.Join(homeDir, ".cache", "target-determinator")
 }
 
 type CommonConfig struct {
@@ -187,6 +203,8 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 		CompareQueriesAroundAnalysisCacheClear: commonFlags.CompareQueriesAroundAnalysisCacheClear,
 		FilterIncompatibleTargets:              commonFlags.FilterIncompatibleTargets,
 		EnforceCleanRepo:                       commonFlags.EnforceCleanRepo == EnforceClean,
+		CacheDirectory:                         *commonFlags.CacheDirectory,
+		NoCacheResults:                         commonFlags.NoCacheResults,
 	}
 
 	// Non-context attributes

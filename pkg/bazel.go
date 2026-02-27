@@ -1,6 +1,9 @@
 package pkg
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -22,7 +25,16 @@ type BazelCmdConfig struct {
 	Stderr io.Writer
 }
 
+type HashableKey interface {
+	// HashKey returns a deterministic string that captures all the struct's
+	// fields that can affect target-determinator results. It is included in
+	// the results cache key for each invocation.
+	HashKey() string
+}
+
 type BazelCmd interface {
+	HashableKey
+
 	Execute(config BazelCmdConfig, startupArgs []string, command string, args ...string) (int, error)
 	Cquery(bazelRelease string, config BazelCmdConfig, startupArgs []string, args ...string) (int, error)
 }
@@ -40,6 +52,24 @@ var _buildLikeCommands = map[string]struct{}{
 	"config": {},
 	"cquery": {},
 	"test":   {},
+}
+
+// HashKey returns a SHA-256 digest of the cache-affecting fields: BazelStartupOpts and BazelOpts.
+// Both slices are included in order, as their ordering affects Bazel behaviour.
+//
+// The Bazel version from BazelPath is already available in the context so, to avoid running another bazel subprocess,
+// it is not taken as input to the resulting hash.
+func (c DefaultBazelCmd) HashKey() string {
+	type fields struct {
+		BazelStartupOpts []string
+		BazelOpts        []string
+	}
+	data, _ := json.Marshal(fields{
+		BazelStartupOpts: c.BazelStartupOpts,
+		BazelOpts:        c.BazelOpts,
+	})
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
 }
 
 // Execute calls bazel with the provided arguments.

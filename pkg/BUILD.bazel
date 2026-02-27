@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "bazel.go",
         "bazel_info.go",
+        "cache.go",
         "configurations.go",
         "hash_cache.go",
         "normalizer.go",
@@ -33,6 +34,7 @@ go_library(
 go_test(
     name = "pkg_test",
     srcs = [
+        "cache_test.go",
         "hash_cache_test.go",
         "normalizer_test.go",
         "target_determinator_test.go",
@@ -42,6 +44,7 @@ go_test(
     rundir = ".",
     deps = [
         "//common",
+        "//common/sorted_set",
         "//third_party/protobuf/bazel/analysis",
         "//third_party/protobuf/bazel/build",
         "@bazel_gazelle//label",
