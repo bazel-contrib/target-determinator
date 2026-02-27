@@ -11,7 +11,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"os/user"
 	path2 "path"
 	"reflect"
 	"runtime"
@@ -32,6 +31,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+var gitWorktreesCacheDirname = "worktrees"
+
 type LabelledGitRev struct {
 	// Label is a description of what the git sha represents which may be useful to humans.
 	Label string
@@ -50,8 +51,8 @@ type GitRev struct {
 // NoLabelledGitRev represents a null value for LabelledGitRev.
 var NoLabelledGitRev LabelledGitRev
 
-// CurrentWorkingDirState represents the (potentially dirty) state of the current working directory.
-var CurrentWorkingDirState GitRev
+// CurrentWorkingCopyState represents the (potentially dirty) state of the current working copy.
+var CurrentWorkingCopyState GitRev
 
 // NewLabelledGitRev ensures that the git sha is resolved as soon as the object is created, otherwise we might encounter
 // undesirable behaviors when switching to other revisions e.g. if using "HEAD".
@@ -59,7 +60,7 @@ var CurrentWorkingDirState GitRev
 func NewLabelledGitRev(workspacePath string, revision string, label string) (LabelledGitRev, error) {
 	var gr GitRev
 	if revision == "" {
-		gr = CurrentWorkingDirState
+		gr = CurrentWorkingCopyState
 	} else {
 		gr = GitRev{Revision: revision, Sha: ""}
 		sha, err := GitRevParse(workspacePath, revision, false)
@@ -88,8 +89,8 @@ func (l LabelledGitRev) String() string {
 
 func (l GitRev) String() string {
 	s := ""
-	if l == CurrentWorkingDirState {
-		s = "current working directory state"
+	if l == CurrentWorkingCopyState {
+		s = "current working copy state"
 	} else {
 		if l.Revision != l.Sha {
 			s += l.Revision
@@ -139,6 +140,13 @@ type Context struct {
 	FilterIncompatibleTargets bool
 	// EnforceCleanRepo controls whether we should fail if the repository is unclean.
 	EnforceCleanRepo bool
+	// CacheDirectory is the directory to store cached query results. If empty, caching is disabled.
+	CacheDirectory string
+	// IncludeDifferences controls whether difference explanations are computed for affected targets.
+	// When true, TransitiveConfiguredTargets is required and results must not be loaded from cache.
+	IncludeDifferences bool
+	// NoCacheResults disables both loading results from and saving results to the cache.
+	NoCacheResults bool
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
@@ -157,7 +165,7 @@ func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledG
 		}
 	}
 
-	// At this point, we assume that the working directory is back to its pristine state.
+	// At this point, we assume that the working copy is back to its pristine state.
 	log.Printf("Processing %s", revAfter)
 	queryInfoAfter, err := fullyProcessRevision(context, revAfter, targets)
 	if err != nil {
@@ -179,6 +187,28 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 			err = fmt.Errorf("failed to check out original commit during cleanup: %v", innerErr)
 		}
 	}()
+
+	var treeSha string
+	if context.CacheDirectory != "" && !context.NoCacheResults {
+		var treeErr error
+		treeSha, treeErr = GitTreeSHA(context, rev.GitRevision.Sha)
+		if treeErr != nil {
+			return nil, fmt.Errorf("failed to compute tree SHA for %s: %w", rev, treeErr)
+		}
+
+		if context.IncludeDifferences {
+			log.Println("Skipping cache load: -verbose requires full target metadata not stored in cache")
+		} else {
+			// Try to load from cache.
+			cachedResults, cacheErr := LoadFromCache(context, treeSha, targets.String())
+			if cacheErr == nil {
+				log.Println("Cache hit: returning cached results")
+				return cachedResults, nil
+			}
+			log.Printf("Cache load failed: %v", cacheErr)
+		}
+	}
+
 	queryInfo, loadMetadataCleanup, err := LoadIncompleteMetadata(context, rev, targets)
 	defer loadMetadataCleanup()
 	if err != nil {
@@ -189,6 +219,14 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 	if err := queryInfo.PrefillCache(); err != nil {
 		return nil, fmt.Errorf("failed to calculate hashes at %s: %w", rev, err)
 	}
+
+	// Save to cache if caching is enabled
+	if context.CacheDirectory != "" && !context.NoCacheResults {
+		if saveErr := SaveToCache(context, treeSha, targets.String(), queryInfo); saveErr != nil {
+			log.Printf("Warning: failed to save to cache: %v", saveErr)
+		}
+	}
+
 	return queryInfo, nil
 }
 
@@ -217,10 +255,13 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 		CompareQueriesAroundAnalysisCacheClear: context.CompareQueriesAroundAnalysisCacheClear,
 		FilterIncompatibleTargets:              context.FilterIncompatibleTargets,
 		EnforceCleanRepo:                       context.EnforceCleanRepo,
+		CacheDirectory:                         context.CacheDirectory,
+		IncludeDifferences:                     context.IncludeDifferences,
+		NoCacheResults:                         context.NoCacheResults,
 	}
 	cleanupFunc := func() {}
 
-	if rev.GitRevision != CurrentWorkingDirState {
+	if rev.GitRevision != CurrentWorkingCopyState {
 		// This may return a new workspace path to ensure we don't destroy any local data.
 		newWorkspacePath, err2 := gitSafeCheckout(context, rev, context.IgnoredFiles)
 
@@ -317,6 +358,96 @@ func GitRevParse(workingDirectory string, rev string, isAbbrevRef bool) (string,
 	return strings.Trim(stdoutBuf.String(), "\n"), nil
 }
 
+// GitTreeSHA returns the git tree SHA for commit sha. For the current working copy state it
+// computes a synthetic tree from the index and working copy; for a specific commit it returns
+// the tree SHA of that commit. The result is suitable for use as a cache key.
+func GitTreeSHA(context *Context, sha string) (string, error) {
+	// If the sha is empty, it means we're working with the current working copy state.
+	if sha == "" {
+		return WorkingCopyTreeSHA(context)
+	}
+	var stdoutBuf, stderrBuf bytes.Buffer
+	gitCmd := exec.Command("git", "rev-parse", fmt.Sprintf("%s^{tree}", sha))
+	gitCmd.Dir = context.WorkspacePath
+	gitCmd.Stdout = &stdoutBuf
+	gitCmd.Stderr = &stderrBuf
+	err := gitCmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("could not get tree digest of revision '%v': %w. Stderr: %v", sha, err, stderrBuf.String())
+	}
+	return strings.TrimSpace(stdoutBuf.String()), nil
+
+}
+
+// WorkingCopyTreeSHA computes the git tree SHA of the current working copy,
+// considering all tracked files including staged and unstaged modifications, but
+// excluding untracked files. It does this without modifying the real git index
+// by using a temporary index file.
+func WorkingCopyTreeSHA(context *Context) (string, error) {
+	tmpIndex, err := os.CreateTemp("", "td-index-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp index file: %w", err)
+	}
+	tmpIndex.Close()
+	defer os.Remove(tmpIndex.Name())
+
+	indexEnv := "GIT_INDEX_FILE=" + tmpIndex.Name()
+
+	// Capture the current real index as a tree object
+	var indexTreeBuf, indexTreeErr bytes.Buffer
+	indexTreeCmd := exec.Command("git", "write-tree")
+	indexTreeCmd.Dir = context.WorkspacePath
+	indexTreeCmd.Stdout = &indexTreeBuf
+	indexTreeCmd.Stderr = &indexTreeErr
+	if err := indexTreeCmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to write tree from real index: %w. Stderr: %s", err, indexTreeErr.String())
+	}
+	indexTreeSHA := strings.TrimSpace(indexTreeBuf.String())
+
+	// Seed the temp index from the real index's tree
+	seedCmd := exec.Command("git", "read-tree", indexTreeSHA)
+	seedCmd.Dir = context.WorkspacePath
+	seedCmd.Env = append(os.Environ(), indexEnv)
+	if out, err := seedCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to seed temp index from real index tree: %w. Output: %s", err, out)
+	}
+
+	// Stage tracked modifications (not untracked files)
+	addCmd := exec.Command("git", "add", "-u")
+	addCmd.Dir = context.WorkspacePath
+	addCmd.Env = append(os.Environ(), indexEnv)
+	if out, err := addCmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to stage tracked changes into temp index: %w. Output: %s", err, out)
+	}
+
+	// Remove ignored files from the temp index so they don't affect the tree SHA.
+	if len(context.IgnoredFiles) > 0 {
+		rmArgs := []string{"rm", "--cached", "-r", "--ignore-unmatch", "--"}
+		for _, f := range context.IgnoredFiles {
+			rmArgs = append(rmArgs, f.String())
+		}
+		rmCmd := exec.Command("git", rmArgs...)
+		rmCmd.Dir = context.WorkspacePath
+		rmCmd.Env = append(os.Environ(), indexEnv)
+		if out, err := rmCmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("failed to remove ignored files from temp index: %w. Output: %s", err, out)
+		}
+	}
+
+	// Write the tree and capture its SHA
+	var stdoutBuf, stderrBuf bytes.Buffer
+	writeCmd := exec.Command("git", "write-tree")
+	writeCmd.Dir = context.WorkspacePath
+	writeCmd.Env = append(os.Environ(), indexEnv)
+	writeCmd.Stdout = &stdoutBuf
+	writeCmd.Stderr = &stderrBuf
+	if err := writeCmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to write tree from temp index: %w. Stderr: %s", err, stderrBuf.String())
+	}
+
+	return strings.TrimSpace(stdoutBuf.String()), nil
+}
+
 type GitFileStatus struct {
 	// Status contains the shorthand notation of the status of the file. See `man git-status` for a mapping.
 	Status string
@@ -407,7 +538,7 @@ func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common
 	}
 	newRepositoryPath := ""
 	if useGitWorktree {
-		newRepositoryPath, err = gitReuseOrCreateWorktree(context.WorkspacePath, rev)
+		newRepositoryPath, err = gitReuseOrCreateWorktree(context, rev)
 		if err != nil {
 			return "", fmt.Errorf("failed to create or reuse worktree: %w", err)
 		}
@@ -435,26 +566,22 @@ func gitCheckout(workingDirectory string, rev LabelledGitRev) error {
 // If it can't, it removes the directory completely and re-creates the worktree.
 //
 // The return path to the worktree is stable between invocations.
-func gitReuseOrCreateWorktree(workingDirectory string, rev LabelledGitRev) (string, error) {
-	currentUser, err := user.Current()
-	if err != nil {
-		return "", fmt.Errorf("failed to determine current user: %w", err)
-	}
-	cacheDir := path2.Join(currentUser.HomeDir, ".cache", "target-determinator")
-	if err = os.MkdirAll(cacheDir, 0750); err != nil {
+func gitReuseOrCreateWorktree(context *Context, rev LabelledGitRev) (string, error) {
+	cacheDir := path2.Join(context.CacheDirectory, gitWorktreesCacheDirname)
+	if err := os.MkdirAll(cacheDir, 0750); err != nil {
 		return "", fmt.Errorf("failed to create the .cache directory")
 	}
 	hashBuilder := sha1.New()
-	hashBuilder.Write([]byte(workingDirectory))
+	hashBuilder.Write([]byte(context.WorkspacePath))
 	currentDirHash := hex.EncodeToString(hashBuilder.Sum(nil))
-	worktreeDirPath := path2.Join(cacheDir, fmt.Sprintf("td-worktree-%v-%v", path2.Base(workingDirectory), currentDirHash))
+	worktreeDirPath := path2.Join(cacheDir, fmt.Sprintf("td-worktree-%v-%v", path2.Base(context.WorkspacePath), currentDirHash))
 
 	if err := os.MkdirAll(cacheDir, 0750); err != nil {
 		return "", fmt.Errorf("failed to create cache directory %v for git worktree: %w", worktreeDirPath, err)
 	}
 
 	tryReuseDir := true
-	_, err = os.Stat(worktreeDirPath)
+	_, err := os.Stat(worktreeDirPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			tryReuseDir = false
@@ -477,7 +604,7 @@ func gitReuseOrCreateWorktree(workingDirectory string, rev LabelledGitRev) (stri
 	if err != nil {
 		return "", fmt.Errorf("failed to remove worktree directory %v: %w", worktreeDirPath, err)
 	}
-	if err = gitCreateWorktree(workingDirectory, worktreeDirPath, rev.GitRevision.Sha); err != nil {
+	if err = gitCreateWorktree(context.WorkspacePath, worktreeDirPath, rev.GitRevision.Sha); err != nil {
 		return worktreeDirPath, fmt.Errorf("failed to create temporary git worktree: %w", err)
 	}
 

@@ -8,7 +8,7 @@ import (
 )
 
 // RelPath represents a relative path.
-// It interprets the inner path as if it did not have a trailing slash.
+// It interprets the inner path as if it did not have a leading slash.
 type RelPath struct {
 	path key.Path
 }

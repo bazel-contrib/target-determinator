@@ -25,6 +25,7 @@ public class TargetDeterminatorIntegrationTest extends Tests {
         "--ignore-file",
         ignoredDirectoryName,
         "--delete-cached-worktree",
+        "--nocache_results",
         commitBefore);
   }
 

@@ -145,6 +145,53 @@ func (thc *TargetHashCache) Freeze() {
 	thc.frozen = true
 }
 
+// ExtractHashes collects all pre-computed hashes from the cache.
+// Keys are formatted as "<label>\x00<configuration>".
+// Only entries with a computed hash are included.
+func (thc *TargetHashCache) ExtractHashes() map[string][]byte {
+	result := make(map[string][]byte)
+	thc.cacheLock.Lock()
+	defer thc.cacheLock.Unlock()
+	for lbl, configMap := range thc.cache {
+		for cfg, entry := range configMap {
+			entry.hashLock.Lock()
+			if entry.hash != nil {
+				hashCopy := make([]byte, len(entry.hash))
+				copy(hashCopy, entry.hash)
+				result[lbl.String()+"\x00"+cfg.String()] = hashCopy
+			}
+			entry.hashLock.Unlock()
+		}
+	}
+	return result
+}
+
+// RestoreHashes populates the cache with pre-computed hashes and freezes the cache.
+// Keys must be formatted as "<label>\x00<configuration>".
+func (thc *TargetHashCache) RestoreHashes(hashes map[string][]byte) error {
+	thc.cacheLock.Lock()
+	defer thc.cacheLock.Unlock()
+	for key, hash := range hashes {
+		idx := strings.IndexByte(key, '\x00')
+		if idx < 0 {
+			return fmt.Errorf("invalid hash key %q: missing separator", key)
+		}
+		lbl, err := thc.ParseCanonicalLabel(key[:idx])
+		if err != nil {
+			return fmt.Errorf("failed to parse label %q from hash cache: %w", key[:idx], err)
+		}
+		cfg := NormalizeConfiguration(key[idx+1:])
+		if thc.cache[lbl] == nil {
+			thc.cache[lbl] = make(map[Configuration]*cacheEntry)
+		}
+		hashCopy := make([]byte, len(hash))
+		copy(hashCopy, hash)
+		thc.cache[lbl][cfg] = &cacheEntry{hash: hashCopy}
+	}
+	thc.frozen = true
+	return nil
+}
+
 func (thc *TargetHashCache) ParseCanonicalLabel(label string) (gazelle_label.Label, error) {
 	return thc.normalizer.ParseCanonicalLabel(label)
 }
