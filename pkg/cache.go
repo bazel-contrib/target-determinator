@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 
 	ss "github.com/bazel-contrib/target-determinator/common/sorted_set"
@@ -17,13 +18,33 @@ import (
 
 var configuredTargetCacheDirname = "results"
 
-// CacheKey represents the inputs used to generate a cache filename
+// CacheKey represents the inputs used to generate a cache filename.
+//
+// Known limitations (not included in the key, callers should be aware):
+//
+//   - User and system .bazelrc files (~/.bazelrc, /etc/bazel.bazelrc, files
+//     imported from those) can affect the build configuration without changing
+//     the git tree. Target-determinator does not read these files; if they
+//     change between invocations, use --nocache_results.
+//
+//   - The current machine's hardware and OS are not included. Cache entries
+//     produced on one machine are not guaranteed to be valid on another (e.g.
+//     different CPU architecture may change platform-constrained target sets).
+//     Do not share the cache directory across machines.
+//
+//   - Environment variables forwarded to Bazel (CC, CXX, JAVA_HOME, BAZELRC,
+//     etc.) are not included. Changing these between invocations can affect
+//     cquery results without invalidating the cache. This is usually the
+//     expected behavior but has implications. See README.md.
 type CacheKey struct {
 	TDBinaryHash  string
 	BazelVersion  string
 	GitTreeSHA    string
 	TargetPattern string
-	IgnoredFiles  []string
+	// Context holds values tagged affects_cache:"true" on Context (CLI options), plus the
+	// opaque hash returned by BazelCmd.HashKey().
+	// encoding/json marshals map keys alphabetically, ensuring a deterministic serialization.
+	Context map[string]interface{}
 }
 
 // SerializedQueryResults is the structure that gets saved to disk
@@ -54,19 +75,15 @@ func ComputeCacheKey(context *Context, gitSHA string, targetPattern string) (str
 		return "", fmt.Errorf("failed to get bazel release for cache key: %w", err)
 	}
 
-	// Create cache key structure
-	ignoredFiles := make([]string, len(context.IgnoredFiles))
-	for i, f := range context.IgnoredFiles {
-		ignoredFiles[i] = f.String()
-	}
-	sort.Strings(ignoredFiles)
+	// Collect all cache-affecting context fields via the `affects_cache` struct tag.
+	contextKey := collectAffectsCacheFields(context)
 
 	key := CacheKey{
 		TDBinaryHash:  binaryHash,
 		BazelVersion:  bazelRelease,
 		GitTreeSHA:    gitSHA,
 		TargetPattern: targetPattern,
-		IgnoredFiles:  ignoredFiles,
+		Context:       contextKey,
 	}
 
 	// Serialize to JSON for consistent hashing
@@ -79,6 +96,52 @@ func ComputeCacheKey(context *Context, gitSHA string, targetPattern string) (str
 	hasher := sha256.New()
 	hasher.Write(keyJSON)
 	return hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// collectAffectsCacheFields walks v (a struct or pointer to struct) and returns a map of
+// field name → value for every field tagged `affects_cache:"true"`.
+func collectAffectsCacheFields(v interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return result
+	}
+	rt := rv.Type()
+	for i := 0; i < rt.NumField(); i++ {
+		field := rt.Field(i)
+		if field.Tag.Get("affects_cache") != "true" {
+			continue
+		}
+		result[field.Name] = cacheableValue(rv.Field(i))
+	}
+	return result
+}
+
+// cacheableValue converts a reflect.Value to a JSON-serializable interface{}.
+// Slices whose element type implements fmt.Stringer are converted to a sorted []string,
+// ensuring a stable cache key regardless of insertion order.
+// Plain []string slices and other types are returned as-is for direct JSON marshaling.
+func cacheableValue(v reflect.Value) interface{} {
+	switch v.Kind() {
+	case reflect.Slice:
+		stringerType := reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
+		if v.Type().Elem().Implements(stringerType) {
+			strs := make([]string, v.Len())
+			for i := 0; i < v.Len(); i++ {
+				strs[i] = v.Index(i).Interface().(fmt.Stringer).String()
+			}
+			sort.Strings(strs)
+			return strs
+		}
+	case reflect.Interface:
+		if hk, ok := v.Interface().(HashableKey); ok {
+			return hk.HashKey()
+		}
+	}
+	return v.Interface()
 }
 
 // hashFile computes SHA256 hash of a file

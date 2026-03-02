@@ -7,19 +7,48 @@ Target determinator is a binary (and Go API) used to determine which Bazel targe
 For simple listing, the `target-determinator` binary is supplied:
 
 ```
-Usage of target-determinator:
-target-determinator <before-revision>
-Where <before-revision> may be any commit revision - full commit hashes, short commit hashes, tags, branches, etc.
+Usage of bazel-bin/target-determinator/target-determinator_/target-determinator:
+  -analysis-cache-clear-strategy string
+        Strategy for clearing the analysis cache. Accepted values: skip,shutdown,discard. (default "skip")
   -bazel string
-    	Bazel binary (basename on $PATH, or absolute or relative path) to run (default "bazel")
+        Bazel binary (basename on $PATH, or absolute or relative path) to run. (default "bazel")
+  -bazel-opts value
+        Options to pass to Bazel. Assumed to apply to build and cquery. Options should use relative paths for repository
+        files (see --bazel-startup-opts).
+  -bazel-startup-opts value
+        Startup options to pass to Bazel. Options such as '--bazelrc' should use relative paths for files under the
+        repository to avoid issues (TD may check out the repository in a temporary directory).
+  -before-query-error-behavior string
+        How to behave if the 'before' revision query fails. Accepted values: fatal,ignore-and-build-all (default
+        "ignore-and-build-all")
+  -cache-dir string
+        Cache directory to avoid existing re-computations. Note: home- and system- bazelrc files, environment variables,
+        and host hardware/OS are not included in the results cache key. Use --nocache_results if necessary. (default
+        "/Users/rchossart/.cache/target-determinator")
+  -compare-queries-around-analysis-cache-clear
+        Whether to check for query result differences before and after analysis cache clears. This is a temporary flag
+        for performing real-world analysis.
+  -delete-cached-worktree
+        Delete created worktrees after use when created. Keeping them can make subsequent invocations faster.
+  -enforce-clean value
+        Pass --enforce-clean=enforce-clean to fail if the repository is unclean, or --enforce-clean=allow-ignored to
+        allow ignored untracked files (the default). (default allow-ignored)
+  -filter-incompatible-targets
+        Whether to filter out incompatible targets from the candidate set of affected targets. (default true)
   -ignore-file value
-    	Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel graph.
+        Files to ignore for git operations, relative to the working-directory. These files shan't affect the Bazel
+        graph.
+  -nocache_results
+        Disable loading and saving of results to the cache.
   -targets bazel query
-      Targets to consider. Accepts any valid bazel query expression (see https://bazel.build/reference/query). (default "//...")
+        Targets to consider. Accepts any valid bazel query expression (see https://bazel.build/reference/query).
+        (default "//...")
   -verbose
-    	Whether to explain (messily) why each target is getting run
+        Whether to explain (messily) why each target is getting run
+  -version
+        Print the version of the tool and exit.
   -working-directory string
-    	Working directory to query (default ".")
+        Working directory to query. (default ".")
 ```
 
 This binary lists targets to stdout, one-per-line, which were affected between <before-revision> and the currently checked-out revision.
@@ -60,6 +89,32 @@ type WalkCallback func(label.Label, []Difference, *analysis.ConfiguredTarget)
 ```
 
 This can be used to flexibly build your own logic handling the affected targets to drive whatever analysis you want.
+
+## Caching
+
+Target Determinator caches the results of Bazel cquery invocations across runs. On a cache hit, the expensive cquery and hashing work for a given commit is skipped entirely.
+
+The cache key is derived from:
+
+- The target-determinator binary itself (SHA-256 hash)
+- The Bazel version (`bazel info release`)
+- The git tree SHA of the queried commit
+- The target pattern (e.g. `//...`)
+- CLI options that may affect cquery results, such as `--filter-incompatible-targets` and the Bazel startup/build options passed via `--bazel-startup-opts` / `--bazel-opts`
+
+*Not* included in the cache key:
+
+- User and system bazelrc files (`~/.bazelrc`, `/etc/bazel.bazelrc`, and files they import)
+- The host machine (hardware, OS). Cache entries produced on one machine are not guaranteed to be valid on another (e.g. a different CPU architecture can change which platform-constrained targets are selected). Do not share the cache directory across machines.
+- Environment variables, whether they are used by Bazel or not.
+
+### Environment variables and caching
+
+Without caching, the "before" and "after" cquery calls are both made with the same environment variables. Taken in the context of a CI pipeline run, for example, this means that even the "before" computation uses the *current* (or "after") environment variables, not the environment variables that existed when the "before" commit was built. That answers the question "what targets differ between these two commits, assuming the environment was the same?".
+
+With caching, however, the "before" result may have been computed in an earlier pipeline run, under the environment variables that were in effect *at that time*. If an environment variable affected Bazel's query output (e.g. because it is referenced by `--workspace_status`, `--action_env`, `--test_env`, or a repo rule), the cached result reflects the old environment, while the "after" result reflects the new one. The two results are then compared under different conditions, which may produce spurious differences.
+
+In practice this matters most in release pipelines where stamping or versioning variables (e.g. `MY_PKG_VERSION`) change between runs. If you want to answer "which targets would have changed, assuming the environment is the same before and after?", run `target-determinator` with `--nocache_results` to force both computations to happen in the same environment.
 
 ## How to get Target Determinator
 

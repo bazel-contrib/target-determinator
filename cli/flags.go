@@ -127,7 +127,7 @@ func RegisterCommonFlags() *CommonFlags {
 	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "skip", "Strategy for clearing the analysis cache. Accepted values: skip,shutdown,discard.")
 	flag.BoolVar(&commonFlags.CompareQueriesAroundAnalysisCacheClear, "compare-queries-around-analysis-cache-clear", false, "Whether to check for query result differences before and after analysis cache clears. This is a temporary flag for performing real-world analysis.")
 	flag.BoolVar(&commonFlags.FilterIncompatibleTargets, "filter-incompatible-targets", true, "Whether to filter out incompatible targets from the candidate set of affected targets.")
-	flag.StringVar(commonFlags.CacheDirectory, "cache-dir", defaultCacheDir(), "Cache directory to avoid existing re-computations.")
+	flag.StringVar(commonFlags.CacheDirectory, "cache-dir", defaultCacheDir(), "Cache directory to avoid existing re-computations. Note: home- and system- bazelrc files, environment variables, and host hardware/OS are not included in the results cache key. Use --nocache_results if necessary.")
 	flag.BoolVar(&commonFlags.NoCacheResults, "nocache_results", false, "Disable loading and saving of results to the cache.")
 	return &commonFlags
 }

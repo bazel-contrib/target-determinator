@@ -50,6 +50,7 @@ func TestSerializeDeserializeMatchingTargets(t *testing.T) {
 // fakeBazelCmd implements BazelCmd and returns a fixed release string for "bazel info release".
 type fakeBazelCmd struct {
 	release string
+	hashKey string
 }
 
 func (f fakeBazelCmd) Execute(config BazelCmdConfig, startupArgs []string, command string, args ...string) (int, error) {
@@ -66,13 +67,16 @@ func (f fakeBazelCmd) Cquery(_ string, _ BazelCmdConfig, _ []string, _ ...string
 	return 1, fmt.Errorf("cquery not expected in this test")
 }
 
+func (f fakeBazelCmd) HashKey() string { return f.hashKey }
+
 func TestSaveToCacheLoadFromCache(t *testing.T) {
 	const bazelRelease = "release 7.0.0"
 
 	ctx := &Context{
-		CacheDirectory: t.TempDir(),
-		WorkspacePath:  t.TempDir(),
-		BazelCmd:       fakeBazelCmd{release: bazelRelease},
+		CacheDirectory:            t.TempDir(),
+		WorkspacePath:             t.TempDir(),
+		BazelCmd:                  fakeBazelCmd{release: bazelRelease},
+		FilterIncompatibleTargets: true,
 	}
 
 	lbl := mustParseLabel("//foo:bar")
@@ -107,4 +111,61 @@ func TestSaveToCacheLoadFromCache(t *testing.T) {
 	if loaded.BazelRelease != qr.BazelRelease {
 		t.Errorf("BazelRelease mismatch: want %q, got %q", qr.BazelRelease, loaded.BazelRelease)
 	}
+
+	// Changing FilterIncompatibleTargets must produce a different cache key (cache miss).
+	ctxChanged := *ctx
+	ctxChanged.FilterIncompatibleTargets = false
+	if _, err := LoadFromCache(&ctxChanged, "deadcafe", "//..."); err == nil {
+		t.Error("expected cache miss when FilterIncompatibleTargets changes, but got a hit")
+	}
+
+	// Changing BazelCmd.HashKey() must produce a different cache key (cache miss).
+	ctxDiffCmd := *ctx
+	ctxDiffCmd.BazelCmd = fakeBazelCmd{release: bazelRelease, hashKey: "different-hash"}
+	if _, err := LoadFromCache(&ctxDiffCmd, "deadcafe", "//..."); err == nil {
+		t.Error("expected cache miss when BazelCmd hash changes, but got a hit")
+	}
+}
+
+func TestCollectAffectsCacheFields(t *testing.T) {
+	t.Run("Context collects FilterIncompatibleTargets", func(t *testing.T) {
+		ctx := &Context{FilterIncompatibleTargets: true}
+		got := collectAffectsCacheFields(ctx)
+		if got["FilterIncompatibleTargets"] != true {
+			t.Errorf("FilterIncompatibleTargets = %v, want true", got["FilterIncompatibleTargets"])
+		}
+	})
+}
+
+func TestDefaultBazelCmdHashKey(t *testing.T) {
+	baseline := DefaultBazelCmd{}.HashKey()
+
+	t.Run("differs when BazelStartupOpts changes", func(t *testing.T) {
+		h := DefaultBazelCmd{BazelStartupOpts: []string{"--opt"}}.HashKey()
+		if h == baseline {
+			t.Error("expected different hash when BazelStartupOpts changes")
+		}
+	})
+
+	t.Run("differs when BazelOpts changes", func(t *testing.T) {
+		h := DefaultBazelCmd{BazelOpts: []string{"--opt"}}.HashKey()
+		if h == baseline {
+			t.Error("expected different hash when BazelOpts changes")
+		}
+	})
+
+	t.Run("BazelOpts order is significant", func(t *testing.T) {
+		h1 := DefaultBazelCmd{BazelOpts: []string{"--z_first", "--a_second"}}.HashKey()
+		h2 := DefaultBazelCmd{BazelOpts: []string{"--a_second", "--z_first"}}.HashKey()
+		if h1 == h2 {
+			t.Error("expected different hashes for different BazelOpts orderings")
+		}
+	})
+
+	t.Run("BazelPath is not included", func(t *testing.T) {
+		h := DefaultBazelCmd{BazelPath: "/custom/bazel"}.HashKey()
+		if h != baseline {
+			t.Error("BazelPath should not affect the hash key")
+		}
+	})
 }

@@ -108,13 +108,13 @@ type Context struct {
 	// OriginalRevision is the git revision the repo was in when initializing the context.
 	OriginalRevision LabelledGitRev
 	// BazelCmd is used to execute when necessary Bazel.
-	BazelCmd BazelCmd
+	BazelCmd BazelCmd `affects_cache:"true"`
 	// BazelOutputBase is the path of the Bazel output base directory of the original workspace.
 	BazelOutputBase string
 	// DeleteCachedWorktree represents whether we should keep worktrees around for reuse in future invocations.
 	DeleteCachedWorktree bool
 	// IgnoredFiles represents files that should be ignored for git operations.
-	IgnoredFiles []common.RelPath
+	IgnoredFiles []common.RelPath `affects_cache:"true"`
 	// BeforeQueryErrorBehavior describes how to handle errors when querying the "before" revision.
 	// Accepted values are:
 	// - "fatal" - treat an error querying as fatal.
@@ -137,7 +137,7 @@ type Context struct {
 	// This flag allows validating whether that is the case.
 	CompareQueriesAroundAnalysisCacheClear bool
 	// FilterIncompatibleTargets controls whether we filter out incompatible targets from the candidate set of affected targets.
-	FilterIncompatibleTargets bool
+	FilterIncompatibleTargets bool `affects_cache:"true"`
 	// EnforceCleanRepo controls whether we should fail if the repository is unclean.
 	EnforceCleanRepo bool
 	// CacheDirectory is the directory to store cached query results. If empty, caching is disabled.
