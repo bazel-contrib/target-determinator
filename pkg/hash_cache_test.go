@@ -385,7 +385,7 @@ func parseResult(t *testing.T, result *analysis.CqueryResult, bazelRelease strin
 	if err != nil {
 		t.Fatalf("Failed to parse cquery result: %v", err)
 	}
-	return NewTargetHashCache(cqueryResult, &n, bazelRelease)
+	return NewTargetHashCache(cqueryResult, &n, bazelRelease, false)
 }
 
 func areHashesEqual(left, right []byte) bool {

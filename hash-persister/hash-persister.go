@@ -107,6 +107,10 @@ func parseFlags() (*hashPersisterFlags, error) {
 }
 
 func resolveConfig(flags hashPersisterFlags) (*config, error) {
+	if *flags.commonFlags.QueryBackend == "query" && *flags.commonFlags.AnalysisCacheClearStrategy != "skip" {
+		return nil, fmt.Errorf("--analysis-cache-clear-strategy=%s is incompatible with --query-backend=query: bazel query does not use the analysis cache", *flags.commonFlags.AnalysisCacheClearStrategy)
+	}
+
 	// Validate working directory
 	workingDirectory, err := filepath.Abs(*flags.commonFlags.WorkingDirectory)
 	if err != nil {
@@ -147,6 +151,7 @@ func resolveConfig(flags hashPersisterFlags) (*config, error) {
 		CompareQueriesAroundAnalysisCacheClear: flags.commonFlags.CompareQueriesAroundAnalysisCacheClear,
 		FilterIncompatibleTargets:              flags.commonFlags.FilterIncompatibleTargets,
 		EnforceCleanRepo:                       flags.commonFlags.EnforceCleanRepo == cli.EnforceClean,
+		QueryBackend:                           *flags.commonFlags.QueryBackend,
 	}
 
 	targetsList, err := pkg.ParseTargetsList(*flags.commonFlags.TargetsFlag)

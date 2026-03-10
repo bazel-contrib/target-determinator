@@ -25,12 +25,18 @@ import (
 )
 
 // NewTargetHashCache creates a TargetHashCache which uses context for metadata lookups.
+// When forceDisableConfiguredRuleInputs is true, ConfiguredRuleInput will not be used regardless
+// of Bazel version. This is needed for the query backend which doesn't populate ConfiguredRuleInput.
 func NewTargetHashCache(
 	context map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget,
 	normalizer *Normalizer,
 	bazelRelease string,
+	forceDisableConfiguredRuleInputs bool,
 ) *TargetHashCache {
 	bazelVersionSupportsConfiguredRuleInputs := isConfiguredRuleInputsSupported(bazelRelease)
+	if forceDisableConfiguredRuleInputs {
+		bazelVersionSupportsConfiguredRuleInputs = false
+	}
 
 	return &TargetHashCache{
 		context: context,
@@ -565,7 +571,15 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 	// rather than hashing attributes ourselves.
 	// On the plus side, this builds in some heuristics from Bazel (e.g. ignoring `generator_location`).
 	// On the down side, it would even further decouple our "hashing" and "diffing" procedures.
-	for _, attr := range rule.GetAttribute() {
+	//
+	// Sort attributes by name before hashing to ensure deterministic output regardless of the
+	// order Bazel returns them in the proto output, which can vary between invocations.
+	sortedAttributes := make([]*build.Attribute, len(rule.GetAttribute()))
+	copy(sortedAttributes, rule.GetAttribute())
+	sort.Slice(sortedAttributes, func(i, j int) bool {
+		return sortedAttributes[i].GetName() < sortedAttributes[j].GetName()
+	})
+	for _, attr := range sortedAttributes {
 		normalizedAttribute := thc.AttributeForSerialization(attr)
 
 		protoBytes, err := proto.Marshal(normalizedAttribute)
@@ -583,6 +597,25 @@ func hashRule(thc *TargetHashCache, rule *build.Rule, configuration *analysis.Co
 	if err != nil {
 		return nil, err
 	}
+	// Sort rule inputs by label (and configuration as tiebreaker) to ensure deterministic output
+	// regardless of the order Bazel returns them in the proto output, which can vary between
+	// invocations. The configuration tiebreaker is needed because the ConfiguredRuleInput path
+	// can produce multiple entries for the same label with different configurations.
+	sort.Slice(labelsAndConfigurations, func(i, j int) bool {
+		li, lj := labelsAndConfigurations[i].Label.String(), labelsAndConfigurations[j].Label.String()
+		if li != lj {
+			return li < lj
+		}
+		// Tiebreak by first configuration (each ConfiguredRuleInput entry has exactly one).
+		ci, cj := "", ""
+		if len(labelsAndConfigurations[i].Configurations) > 0 {
+			ci = labelsAndConfigurations[i].Configurations[0].String()
+		}
+		if len(labelsAndConfigurations[j].Configurations) > 0 {
+			cj = labelsAndConfigurations[j].Configurations[0].String()
+		}
+		return ci < cj
+	})
 	for _, ruleInputLabelAndConfigurations := range labelsAndConfigurations {
 		for _, ruleInputConfiguration := range ruleInputLabelAndConfigurations.Configurations {
 			ruleInputLabel := ruleInputLabelAndConfigurations.Label
