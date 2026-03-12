@@ -56,6 +56,9 @@ var _buildLikeCommands = map[string]struct{}{
 
 // HashKey returns a SHA-256 digest of the cache-affecting fields: BazelStartupOpts and BazelOpts.
 // Both slices are included in order, as their ordering affects Bazel behaviour.
+//
+// The Bazel version from BazelPath is already available in the context so, to avoid running another bazel subprocess,
+// it is not taken as input to the resulting hash.
 func (c DefaultBazelCmd) HashKey() string {
 	type fields struct {
 		BazelStartupOpts []string

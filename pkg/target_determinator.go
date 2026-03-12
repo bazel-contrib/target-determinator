@@ -104,22 +104,22 @@ func (l GitRev) String() string {
 type Context struct {
 	// WorkspacePath is the absolute path to the root of the project's Bazel Workspace directory (which is
 	// assumed to be in a git repository, but is not assumed to be the root of a git repository).
-	WorkspacePath string
+	WorkspacePath string `results_cache_key_ignore:"true"`
 	// OriginalRevision is the git revision the repo was in when initializing the context.
-	OriginalRevision LabelledGitRev
+	OriginalRevision LabelledGitRev `results_cache_key_ignore:"true"`
 	// BazelCmd is used to execute when necessary Bazel.
-	BazelCmd BazelCmd `affects_cache:"true"`
+	BazelCmd BazelCmd
 	// BazelOutputBase is the path of the Bazel output base directory of the original workspace.
-	BazelOutputBase string
+	BazelOutputBase string `results_cache_key_ignore:"true"`
 	// DeleteCachedWorktree represents whether we should keep worktrees around for reuse in future invocations.
-	DeleteCachedWorktree bool
+	DeleteCachedWorktree bool `results_cache_key_ignore:"true"`
 	// IgnoredFiles represents files that should be ignored for git operations.
-	IgnoredFiles []common.RelPath `affects_cache:"true"`
+	IgnoredFiles []common.RelPath
 	// BeforeQueryErrorBehavior describes how to handle errors when querying the "before" revision.
 	// Accepted values are:
 	// - "fatal" - treat an error querying as fatal.
 	// - "ignore-and-build-all" - ignore the error, and build all targets at the "after" revision.
-	BeforeQueryErrorBehavior string
+	BeforeQueryErrorBehavior string `results_cache_key_ignore:"true"`
 	// AnalysisCacheClearStrategy is the strategy used for clearing the Bazel analysis cache before cquery runs.
 	// Accepted values are: skip, shutdown, discard.
 	// We currently don't believe clearing this cache is necessary.
@@ -131,22 +131,22 @@ type Context struct {
 	//
 	// discard avoids a potentially costly JVM tear-down and start-up,
 	/// but seems to over-invalidate things (e.g. it seems to force re-fetching every rules_python whl_library which can be very expensive).
-	AnalysisCacheClearStrategy string
+	AnalysisCacheClearStrategy string `results_cache_key_ignore:"true"`
 	// CompareQueriesAroundAnalysisCacheClear controls whether we validate whether clearing the analysis cache had any meaningful effect.
 	// We suspect that clearing the analysis cache is now unnecessary, as cquery behaves more reasonably around not returning stale results.
 	// This flag allows validating whether that is the case.
-	CompareQueriesAroundAnalysisCacheClear bool
+	CompareQueriesAroundAnalysisCacheClear bool `results_cache_key_ignore:"true"`
 	// FilterIncompatibleTargets controls whether we filter out incompatible targets from the candidate set of affected targets.
-	FilterIncompatibleTargets bool `affects_cache:"true"`
+	FilterIncompatibleTargets bool
 	// EnforceCleanRepo controls whether we should fail if the repository is unclean.
-	EnforceCleanRepo bool
+	EnforceCleanRepo bool `results_cache_key_ignore:"true"`
 	// CacheDirectory is the directory to store cached query results. If empty, caching is disabled.
-	CacheDirectory string
+	CacheDirectory string `results_cache_key_ignore:"true"`
 	// IncludeDifferences controls whether difference explanations are computed for affected targets.
 	// When true, TransitiveConfiguredTargets is required and results must not be loaded from cache.
-	IncludeDifferences bool
+	IncludeDifferences bool `results_cache_key_ignore:"true"`
 	// NoCacheResults disables both loading results from and saving results to the cache.
-	NoCacheResults bool
+	NoCacheResults bool `results_cache_key_ignore:"true"`
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.

@@ -3,6 +3,7 @@ package pkg
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"testing"
 
 	ss "github.com/bazel-contrib/target-determinator/common/sorted_set"
@@ -127,6 +128,53 @@ func TestSaveToCacheLoadFromCache(t *testing.T) {
 	}
 }
 
+// collectAffectsCacheFields walks v (a struct or pointer to struct) and returns a map of
+// field name → value for every field NOT tagged `results_cache_key_ignore:"true"`.
+// This reflection-based implementation is kept in tests to cross-check collectCacheContextFields
+// and catch any newly added fields that weren't annotated or added to the simple function.
+func collectAffectsCacheFields(v interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if rv.Kind() != reflect.Struct {
+		return result
+	}
+	rt := rv.Type()
+	for i := 0; i < rt.NumField(); i++ {
+		field := rt.Field(i)
+		if field.Tag.Get("results_cache_key_ignore") == "true" {
+			continue
+		}
+		result[field.Name] = reflectionCacheableValue(rv.Field(i))
+	}
+	return result
+}
+
+// reflectionCacheableValue converts a reflect.Value to a JSON-serializable interface{}.
+// Slices whose element type implements fmt.Stringer are converted to a sorted []string.
+// Interface values implementing HashableKey are converted via HashKey().
+func reflectionCacheableValue(v reflect.Value) interface{} {
+	switch v.Kind() {
+	case reflect.Slice:
+		stringerType := reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
+		if v.Type().Elem().Implements(stringerType) {
+			strs := make([]string, v.Len())
+			for i := 0; i < v.Len(); i++ {
+				strs[i] = v.Index(i).Interface().(fmt.Stringer).String()
+			}
+			sort.Strings(strs)
+			return strs
+		}
+	case reflect.Interface:
+		if hk, ok := v.Interface().(HashableKey); ok {
+			return hk.HashKey()
+		}
+	}
+	return v.Interface()
+}
+
 func TestCollectAffectsCacheFields(t *testing.T) {
 	t.Run("Context collects FilterIncompatibleTargets", func(t *testing.T) {
 		ctx := &Context{FilterIncompatibleTargets: true}
@@ -135,6 +183,24 @@ func TestCollectAffectsCacheFields(t *testing.T) {
 			t.Errorf("FilterIncompatibleTargets = %v, want true", got["FilterIncompatibleTargets"])
 		}
 	})
+}
+
+// TestCollectCacheContextFieldsMatchesReflection verifies that collectCacheContextFields
+// produces the same map as the reflection-based collectAffectsCacheFields.
+// This catches any fields added to Context without results_cache_key_ignore:"true" that
+// weren't also added to collectCacheContextFields.
+func TestCollectCacheContextFieldsMatchesReflection(t *testing.T) {
+	ctx := &Context{
+		BazelCmd:                  fakeBazelCmd{release: "release 7.0.0", hashKey: "testhash"},
+		FilterIncompatibleTargets: true,
+	}
+
+	simple := collectCacheContextFields(ctx)
+	reflective := collectAffectsCacheFields(ctx)
+
+	if !reflect.DeepEqual(simple, reflective) {
+		t.Errorf("collectCacheContextFields and collectAffectsCacheFields disagree:\n  simple:     %v\n  reflective: %v", simple, reflective)
+	}
 }
 
 func TestDefaultBazelCmdHashKey(t *testing.T) {

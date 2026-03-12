@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 
 	ss "github.com/bazel-contrib/target-determinator/common/sorted_set"
@@ -41,8 +40,8 @@ type CacheKey struct {
 	BazelVersion  string
 	GitTreeSHA    string
 	TargetPattern string
-	// Context holds values tagged affects_cache:"true" on Context (CLI options), plus the
-	// opaque hash returned by BazelCmd.HashKey().
+	// Context holds the Context fields that affect the cache key (i.e. those not tagged
+	// results_cache_key_ignore:"true"), plus the opaque hash returned by BazelCmd.HashKey().
 	// encoding/json marshals map keys alphabetically, ensuring a deterministic serialization.
 	Context map[string]interface{}
 }
@@ -75,8 +74,8 @@ func ComputeCacheKey(context *Context, gitSHA string, targetPattern string) (str
 		return "", fmt.Errorf("failed to get bazel release for cache key: %w", err)
 	}
 
-	// Collect all cache-affecting context fields via the `affects_cache` struct tag.
-	contextKey := collectAffectsCacheFields(context)
+	// Collect all cache-affecting context fields.
+	contextKey := collectCacheContextFields(context)
 
 	key := CacheKey{
 		TDBinaryHash:  binaryHash,
@@ -98,50 +97,21 @@ func ComputeCacheKey(context *Context, gitSHA string, targetPattern string) (str
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-// collectAffectsCacheFields walks v (a struct or pointer to struct) and returns a map of
-// field name → value for every field tagged `affects_cache:"true"`.
-func collectAffectsCacheFields(v interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
-	rv := reflect.ValueOf(v)
-	if rv.Kind() == reflect.Ptr {
-		rv = rv.Elem()
+// collectCacheContextFields returns a map of the Context fields that affect the cache key
+// (i.e. those not tagged results_cache_key_ignore:"true").
+// If new fields are added to Context without the ignore tag, they must be added here too;
+// cache_test.go enforces this via a reflection-based cross-check.
+func collectCacheContextFields(ctx *Context) map[string]interface{} {
+	ignoredFiles := make([]string, len(ctx.IgnoredFiles))
+	for i, f := range ctx.IgnoredFiles {
+		ignoredFiles[i] = f.String()
 	}
-	if rv.Kind() != reflect.Struct {
-		return result
+	sort.Strings(ignoredFiles)
+	return map[string]interface{}{
+		"BazelCmd":                  ctx.BazelCmd.HashKey(),
+		"IgnoredFiles":              ignoredFiles,
+		"FilterIncompatibleTargets": ctx.FilterIncompatibleTargets,
 	}
-	rt := rv.Type()
-	for i := 0; i < rt.NumField(); i++ {
-		field := rt.Field(i)
-		if field.Tag.Get("affects_cache") != "true" {
-			continue
-		}
-		result[field.Name] = cacheableValue(rv.Field(i))
-	}
-	return result
-}
-
-// cacheableValue converts a reflect.Value to a JSON-serializable interface{}.
-// Slices whose element type implements fmt.Stringer are converted to a sorted []string,
-// ensuring a stable cache key regardless of insertion order.
-// Plain []string slices and other types are returned as-is for direct JSON marshaling.
-func cacheableValue(v reflect.Value) interface{} {
-	switch v.Kind() {
-	case reflect.Slice:
-		stringerType := reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
-		if v.Type().Elem().Implements(stringerType) {
-			strs := make([]string, v.Len())
-			for i := 0; i < v.Len(); i++ {
-				strs[i] = v.Index(i).Interface().(fmt.Stringer).String()
-			}
-			sort.Strings(strs)
-			return strs
-		}
-	case reflect.Interface:
-		if hk, ok := v.Interface().(HashableKey); ok {
-			return hk.HashKey()
-		}
-	}
-	return v.Interface()
 }
 
 // hashFile computes SHA256 hash of a file
