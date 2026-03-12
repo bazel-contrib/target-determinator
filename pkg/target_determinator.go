@@ -189,9 +189,25 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 	}()
 
 	var treeSha string
-	if context.CacheDirectory != "" && !context.NoCacheResults {
+	cacheEnabled := context.CacheDirectory != "" && !context.NoCacheResults
+	if cacheEnabled && rev.GitRevision == CurrentWorkingCopyState {
+		uncleanStatuses, err := GitStatusFiltered(context.WorkspacePath, context.IgnoredFiles)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check git status for caching: %w", err)
+		}
+		if len(uncleanStatuses) > 0 {
+			log.Println("Skipping cache: working copy is unclean")
+			cacheEnabled = false
+		}
+	}
+	if cacheEnabled {
+		gitRev := rev.GitRevision.Sha
+		if gitRev == "" {
+			// We checked the working copy and index are clean above.
+			gitRev = "HEAD"
+		}
 		var treeErr error
-		treeSha, treeErr = GitTreeSHA(context, rev.GitRevision.Sha)
+		treeSha, treeErr = GitTreeSHA(context, gitRev)
 		if treeErr != nil {
 			return nil, fmt.Errorf("failed to compute tree SHA for %s: %w", rev, treeErr)
 		}
@@ -221,7 +237,7 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 	}
 
 	// Save to cache if caching is enabled
-	if context.CacheDirectory != "" && !context.NoCacheResults {
+	if cacheEnabled {
 		if saveErr := SaveToCache(context, treeSha, targets.String(), queryInfo); saveErr != nil {
 			log.Printf("Warning: failed to save to cache: %v", saveErr)
 		}
@@ -358,93 +374,17 @@ func GitRevParse(workingDirectory string, rev string, isAbbrevRef bool) (string,
 	return strings.Trim(stdoutBuf.String(), "\n"), nil
 }
 
-// GitTreeSHA returns the git tree SHA for commit sha. For the current working copy state it
-// computes a synthetic tree from the index and working copy; for a specific commit it returns
-// the tree SHA of that commit. The result is suitable for use as a cache key.
-func GitTreeSHA(context *Context, sha string) (string, error) {
-	// If the sha is empty, it means we're working with the current working copy state.
-	if sha == "" {
-		return WorkingCopyTreeSHA(context)
-	}
+// GitTreeSHA returns the git tree SHA for the given commit-ish (e.g. a commit SHA or "HEAD").
+func GitTreeSHA(context *Context, gitRev string) (string, error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
-	gitCmd := exec.Command("git", "rev-parse", fmt.Sprintf("%s^{tree}", sha))
+	gitCmd := exec.Command("git", "rev-parse", fmt.Sprintf("%s^{tree}", gitRev))
 	gitCmd.Dir = context.WorkspacePath
 	gitCmd.Stdout = &stdoutBuf
 	gitCmd.Stderr = &stderrBuf
 	err := gitCmd.Run()
 	if err != nil {
-		return "", fmt.Errorf("could not get tree digest of revision '%v': %w. Stderr: %v", sha, err, stderrBuf.String())
+		return "", fmt.Errorf("could not get tree digest of revision '%v': %w. Stderr: %v", gitRev, err, stderrBuf.String())
 	}
-	return strings.TrimSpace(stdoutBuf.String()), nil
-
-}
-
-// WorkingCopyTreeSHA computes the git tree SHA of the current working copy,
-// considering all tracked files including staged and unstaged modifications, but
-// excluding untracked files. It does this without modifying the real git index
-// by using a temporary index file.
-func WorkingCopyTreeSHA(context *Context) (string, error) {
-	tmpIndex, err := os.CreateTemp("", "td-index-*")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp index file: %w", err)
-	}
-	tmpIndex.Close()
-	defer os.Remove(tmpIndex.Name())
-
-	indexEnv := "GIT_INDEX_FILE=" + tmpIndex.Name()
-
-	// Capture the current real index as a tree object
-	var indexTreeBuf, indexTreeErr bytes.Buffer
-	indexTreeCmd := exec.Command("git", "write-tree")
-	indexTreeCmd.Dir = context.WorkspacePath
-	indexTreeCmd.Stdout = &indexTreeBuf
-	indexTreeCmd.Stderr = &indexTreeErr
-	if err := indexTreeCmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to write tree from real index: %w. Stderr: %s", err, indexTreeErr.String())
-	}
-	indexTreeSHA := strings.TrimSpace(indexTreeBuf.String())
-
-	// Seed the temp index from the real index's tree
-	seedCmd := exec.Command("git", "read-tree", indexTreeSHA)
-	seedCmd.Dir = context.WorkspacePath
-	seedCmd.Env = append(os.Environ(), indexEnv)
-	if out, err := seedCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to seed temp index from real index tree: %w. Output: %s", err, out)
-	}
-
-	// Stage tracked modifications (not untracked files)
-	addCmd := exec.Command("git", "add", "-u")
-	addCmd.Dir = context.WorkspacePath
-	addCmd.Env = append(os.Environ(), indexEnv)
-	if out, err := addCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to stage tracked changes into temp index: %w. Output: %s", err, out)
-	}
-
-	// Remove ignored files from the temp index so they don't affect the tree SHA.
-	if len(context.IgnoredFiles) > 0 {
-		rmArgs := []string{"rm", "--cached", "-r", "--ignore-unmatch", "--"}
-		for _, f := range context.IgnoredFiles {
-			rmArgs = append(rmArgs, f.String())
-		}
-		rmCmd := exec.Command("git", rmArgs...)
-		rmCmd.Dir = context.WorkspacePath
-		rmCmd.Env = append(os.Environ(), indexEnv)
-		if out, err := rmCmd.CombinedOutput(); err != nil {
-			return "", fmt.Errorf("failed to remove ignored files from temp index: %w. Output: %s", err, out)
-		}
-	}
-
-	// Write the tree and capture its SHA
-	var stdoutBuf, stderrBuf bytes.Buffer
-	writeCmd := exec.Command("git", "write-tree")
-	writeCmd.Dir = context.WorkspacePath
-	writeCmd.Env = append(os.Environ(), indexEnv)
-	writeCmd.Stdout = &stdoutBuf
-	writeCmd.Stderr = &stderrBuf
-	if err := writeCmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to write tree from temp index: %w. Stderr: %s", err, stderrBuf.String())
-	}
-
 	return strings.TrimSpace(stdoutBuf.String()), nil
 }
 
