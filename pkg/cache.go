@@ -220,15 +220,33 @@ func SaveToCache(context *Context, gitSHA string, targetPattern string, queryRes
 		return fmt.Errorf("failed to marshal cache data: %w", err)
 	}
 
-	cacheItemPath := filepath.Join(context.CacheDirectory, configuredTargetCacheDirname, cacheKey)
-	err = os.MkdirAll(filepath.Dir(cacheItemPath), 0755)
-	if err != nil {
-		return fmt.Errorf("failed to create cache dir (%s): %w", filepath.Dir(cacheItemPath), err)
+	cacheItemDir := filepath.Join(context.CacheDirectory, configuredTargetCacheDirname)
+	cacheItemPath := filepath.Join(cacheItemDir, cacheKey)
+	if err := os.MkdirAll(cacheItemDir, 0755); err != nil {
+		return fmt.Errorf("failed to create cache dir (%s): %w", cacheItemDir, err)
 	}
 
-	if err := os.WriteFile(cacheItemPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write cache file: %w", err)
+	tmpFile, err := os.CreateTemp(cacheItemDir, cacheKey+".tmp.*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp cache file: %w", err)
 	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		if tmpPath != "" {
+			os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write temp cache file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp cache file: %w", err)
+	}
+	if err := os.Rename(tmpPath, cacheItemPath); err != nil {
+		return fmt.Errorf("failed to move temp cache file to final location: %w", err)
+	}
+	tmpPath = ""
 
 	log.Printf("Saved results to cache: %s", cacheItemPath)
 	return nil
