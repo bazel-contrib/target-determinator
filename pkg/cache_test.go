@@ -93,7 +93,7 @@ func TestSaveToCacheLoadFromCache(t *testing.T) {
 	qr := &QueryResults{
 		MatchingTargets: mt,
 		BazelRelease:    bazelRelease,
-		TargetHashCache: NewTargetHashCache(nil, &Normalizer{}, bazelRelease),
+		TargetHashCache: NewTargetHashCache(nil, &Normalizer{}, bazelRelease, false),
 	}
 
 	if err := SaveToCache(ctx, "deadcafe", "//...", qr); err != nil {

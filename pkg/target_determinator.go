@@ -147,6 +147,10 @@ type Context struct {
 	IncludeDifferences bool `results_cache_key_ignore:"true"`
 	// NoCacheResults disables both loading results from and saving results to the cache.
 	NoCacheResults bool `results_cache_key_ignore:"true"`
+	// QueryBackend controls which Bazel query backend to use: "cquery" (default) or "query".
+	// "query" operates at the loading phase and is faster but less precise: no configuration
+	// information, no select() resolution, no incompatible target filtering.
+	QueryBackend string
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
@@ -274,6 +278,7 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 		CacheDirectory:                         context.CacheDirectory,
 		IncludeDifferences:                     context.IncludeDifferences,
 		NoCacheResults:                         context.NoCacheResults,
+		QueryBackend:                           context.QueryBackend,
 	}
 	cleanupFunc := func() {}
 
@@ -298,33 +303,43 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 		}
 	}
 
-	var queryInfoBeforeClear *QueryResults
-	if context.CompareQueriesAroundAnalysisCacheClear {
-		var err error
-		queryInfoBeforeClear, err = doQueryDeps(context, targets)
-		if err != nil {
-			return queryInfoBeforeClear, cleanupFunc, fmt.Errorf("failed to query[before] at %s in %v: %w", rev, context.WorkspacePath, err)
+	// query mode doesn't use the analysis cache, so skip clearing and comparison logic.
+	if context.QueryBackend != "query" {
+		var queryInfoBeforeClear *QueryResults
+		if context.CompareQueriesAroundAnalysisCacheClear {
+			var err error
+			queryInfoBeforeClear, err = doQueryDeps(context, targets)
+			if err != nil {
+				return queryInfoBeforeClear, cleanupFunc, fmt.Errorf("failed to query[before] at %s in %v: %w", rev, context.WorkspacePath, err)
+			}
 		}
-	}
 
-	// Clear analysis cache before each query, as cquery configurations leak across invocations.
-	// See https://github.com/bazelbuild/bazel/issues/14725
-	if err := clearAnalysisCache(context); err != nil {
-		return nil, cleanupFunc, err
+		// Clear analysis cache before each query, as cquery configurations leak across invocations.
+		// See https://github.com/bazelbuild/bazel/issues/14725
+		if err := clearAnalysisCache(context); err != nil {
+			return nil, cleanupFunc, err
+		}
+
+		queryInfo, err := doQueryDeps(context, targets)
+		if err != nil {
+			return queryInfo, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, context.WorkspacePath, err)
+		}
+
+		if context.CompareQueriesAroundAnalysisCacheClear {
+			if !reflect.DeepEqual(queryInfoBeforeClear.MatchingTargets, queryInfo.MatchingTargets) {
+				return nil, cleanupFunc, fmt.Errorf("inconsistent cquery results before and after analysis cache clear: MatchingTargets")
+			}
+			if !reflect.DeepEqual(queryInfoBeforeClear.TransitiveConfiguredTargets, queryInfo.TransitiveConfiguredTargets) {
+				return nil, cleanupFunc, fmt.Errorf("inconsistent cquery results before and after analysis cache clear: TransitiveConfiguredTargets")
+			}
+		}
+
+		return queryInfo, cleanupFunc, nil
 	}
 
 	queryInfo, err := doQueryDeps(context, targets)
 	if err != nil {
 		return queryInfo, cleanupFunc, fmt.Errorf("failed to query at %s in %v: %w", rev, context.WorkspacePath, err)
-	}
-
-	if context.CompareQueriesAroundAnalysisCacheClear {
-		if !reflect.DeepEqual(queryInfoBeforeClear.MatchingTargets, queryInfo.MatchingTargets) {
-			return nil, cleanupFunc, fmt.Errorf("inconsistent cquery results before and after analysis cache clear: MatchingTargets")
-		}
-		if !reflect.DeepEqual(queryInfoBeforeClear.TransitiveConfiguredTargets, queryInfo.TransitiveConfiguredTargets) {
-			return nil, cleanupFunc, fmt.Errorf("inconsistent cquery results before and after analysis cache clear: TransitiveConfiguredTargets")
-		}
 	}
 
 	return queryInfo, cleanupFunc, nil
@@ -771,6 +786,10 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 
 	normalizer := Normalizer{repoMapping}
 
+	if context.QueryBackend == "query" {
+		return doQueryDepsQueryMode(context, targets, &normalizer, bazelRelease)
+	}
+
 	// Work around https://github.com/bazelbuild/bazel/issues/21010
 	var incompatibleTargetsToFilter map[label.Label]bool
 	hasIncompatibleTargetsBug, explanation := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("7.0.0-pre.20230628.2")), version.Must(version.NewVersion("7.4.0")))
@@ -799,7 +818,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 				labelsToConfigurations: nil,
 			},
 			TransitiveConfiguredTargets: nil,
-			TargetHashCache:             NewTargetHashCache(nil, &normalizer, bazelRelease),
+			TargetHashCache:             NewTargetHashCache(nil, &normalizer, bazelRelease, false),
 			BazelRelease:                bazelRelease,
 			QueryError:                  retErr,
 		}, retErr
@@ -863,10 +882,70 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	queryResults := &QueryResults{
 		MatchingTargets:             matchingTargets,
 		TransitiveConfiguredTargets: transitiveConfiguredTargets,
-		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, &normalizer, bazelRelease),
+		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, &normalizer, bazelRelease, false),
 		BazelRelease:                bazelRelease,
 		QueryError:                  nil,
 		configurations:              configurations,
+	}
+	return queryResults, nil
+}
+
+func doQueryDepsQueryMode(context *Context, targets TargetsList, normalizer *Normalizer, bazelRelease string) (*QueryResults, error) {
+	depsPattern := fmt.Sprintf("deps(%s)", targets.String())
+	transitiveResult, err := runToQueryResult(context, depsPattern)
+	if err != nil {
+		retErr := fmt.Errorf("failed to query %v: %w", depsPattern, err)
+		return &QueryResults{
+			MatchingTargets: &MatchingTargets{
+				labels:                 nil,
+				labelsToConfigurations: nil,
+			},
+			TransitiveConfiguredTargets: nil,
+			TargetHashCache:             NewTargetHashCache(nil, normalizer, bazelRelease, true),
+			BazelRelease:                bazelRelease,
+			QueryError:                  retErr,
+		}, retErr
+	}
+
+	transitiveConfiguredTargets, err := ParseCqueryResult(transitiveResult, normalizer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse query result: %w", err)
+	}
+
+	// Use --output=label for matching targets since we only need label names here.
+	// The full proto data is already available in the transitive deps result above.
+	matchingLabels, err := runToQueryLabels(context, targets.String(), normalizer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to run top-level query: %w", err)
+	}
+
+	// In query mode, there are no configurations — use a single empty configuration for all targets.
+	emptyConfiguration := NormalizeConfiguration("")
+	log.Println("Matching labels to configurations")
+	labels := make([]label.Label, 0, len(matchingLabels))
+	labelsToConfigurations := make(map[label.Label][]Configuration)
+	for _, l := range matchingLabels {
+		labels = append(labels, l)
+		labelsToConfigurations[l] = append(labelsToConfigurations[l], emptyConfiguration)
+	}
+
+	processedLabelsToConfigurations := make(map[label.Label]*ss.SortedSet[Configuration], len(labels))
+	for l, configurations := range labelsToConfigurations {
+		processedLabelsToConfigurations[l] = ss.NewSortedSetFn(configurations, ConfigurationLess)
+	}
+
+	matchingTargets := &MatchingTargets{
+		labels:                 ss.NewSortedSetFn(labels, CompareLabels),
+		labelsToConfigurations: processedLabelsToConfigurations,
+	}
+
+	queryResults := &QueryResults{
+		MatchingTargets:             matchingTargets,
+		TransitiveConfiguredTargets: transitiveConfiguredTargets,
+		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, normalizer, bazelRelease, true),
+		BazelRelease:                bazelRelease,
+		QueryError:                  nil,
+		configurations:              map[Configuration]singleConfigurationOutput{},
 	}
 	return queryResults, nil
 }
@@ -928,6 +1007,87 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 		}
 		return result.GetResults(), nil
 	}
+}
+
+func runToQueryResult(context *Context, pattern string) ([]*analysis.ConfiguredTarget, error) {
+	log.Printf("Running query on %s", pattern)
+
+	queryOutputFile, err := os.CreateTemp("", "target-determinator-query-*.proto")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary file for query output: %w", err)
+	}
+	queryOutput := queryOutputFile.Name()
+	defer os.Remove(queryOutput)
+	if err = queryOutputFile.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close temporary file for query output: %w", err)
+	}
+
+	var stderr bytes.Buffer
+	// Unlike cquery (which only gained streamed_proto and output_file in Bazel 8.2),
+	// bazel query has supported both since well before any Bazel version this tool targets.
+	returnVal, err := context.BazelCmd.Execute(
+		BazelCmdConfig{Dir: context.WorkspacePath, Stderr: &stderr},
+		[]string{"--output_base", context.BazelOutputBase},
+		"query", "--output=streamed_proto", "--order_output=no",
+		"--output_file="+queryOutput, pattern)
+
+	if returnVal != 0 || err != nil {
+		return nil, fmt.Errorf("failed to run query on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+	}
+
+	queryOutputFile, err = os.Open(queryOutput)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open query output file %s for reading: %w", queryOutput, err)
+	}
+	defer queryOutputFile.Close()
+
+	// Wrap each build.Target in an analysis.ConfiguredTarget with nil configuration.
+	var targets []*analysis.ConfiguredTarget
+	reader := bufio.NewReader(queryOutputFile)
+	unmarshalOpts := protodelim.UnmarshalOptions{MaxSize: -1}
+	for {
+		var target build.Target
+		if err = unmarshalOpts.UnmarshalFrom(reader, &target); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal streamed query output: %w", err)
+		}
+		targets = append(targets, &analysis.ConfiguredTarget{
+			Target:        &target,
+			Configuration: nil,
+		})
+	}
+	return targets, nil
+}
+
+func runToQueryLabels(context *Context, pattern string, normalizer *Normalizer) ([]label.Label, error) {
+	log.Printf("Running query (labels) on %s", pattern)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	returnVal, err := context.BazelCmd.Execute(
+		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
+		[]string{"--output_base", context.BazelOutputBase},
+		"query", "--output=label", "--order_output=no", pattern)
+
+	if returnVal != 0 || err != nil {
+		return nil, fmt.Errorf("failed to run query on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+	}
+
+	var labels []label.Label
+	scanner := bufio.NewScanner(&stdout)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			continue
+		}
+		l, err := normalizer.ParseCanonicalLabel(line)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse label from query output %q: %w", line, err)
+		}
+		labels = append(labels, l)
+	}
+	return labels, nil
 }
 
 func findCompatibleTargets(context *Context, pattern string, compatibility bool, n *Normalizer, bazelRelease string) (map[label.Label]bool, error) {
