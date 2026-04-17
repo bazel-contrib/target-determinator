@@ -39,6 +39,7 @@ go_test(
         "hash_cache_test.go",
         "normalizer_test.go",
         "target_determinator_test.go",
+        "walker_test.go",
     ],
     data = ["//testdata/HelloWorld:all_srcs"],
     embed = [":pkg"],
