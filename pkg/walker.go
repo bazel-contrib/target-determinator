@@ -88,35 +88,29 @@ func DiffSingleLabel(beforeMetadata, afterMetadata *QueryResults, includeDiffere
 			callback(label, differences, configuredTarget)
 			return nil
 		}
-		_, ok := beforeMetadata.TransitiveConfiguredTargets[label][configuration]
-		if !ok {
-			collectDifference(Difference{Category: "NewTarget"})
-			callback(label, differences, configuredTarget)
-			return nil
-		} else {
-			labelAndConfiguration := LabelAndConfiguration{
-				Label:         label,
-				Configuration: configuration,
-			}
-			hashBefore, err := beforeMetadata.TargetHashCache.Hash(labelAndConfiguration)
-			if err != nil {
-				return err
-			}
-			hashAfter, err := afterMetadata.TargetHashCache.Hash(labelAndConfiguration)
-			if err != nil {
-				return err
-			}
-			if bytes.Equal(hashBefore, hashAfter) {
-				continue
-			}
-			if includeDifferences {
-				differences, err = WalkDiffs(beforeMetadata.TargetHashCache, afterMetadata.TargetHashCache, labelAndConfiguration)
-				if err != nil {
-					return err
-				}
-			}
-			callback(label, differences, configuredTarget)
+		labelAndConfiguration := LabelAndConfiguration{
+			Label:         label,
+			Configuration: configuration,
 		}
+
+		hashBefore, err := beforeMetadata.TargetHashCache.Hash(labelAndConfiguration)
+		if err != nil {
+			return err
+		}
+		hashAfter, err := afterMetadata.TargetHashCache.Hash(labelAndConfiguration)
+		if err != nil {
+			return err
+		}
+		if bytes.Equal(hashBefore, hashAfter) {
+			continue
+		}
+		if includeDifferences {
+			differences, err = WalkDiffs(beforeMetadata.TargetHashCache, afterMetadata.TargetHashCache, labelAndConfiguration)
+			if err != nil {
+				return err
+			}
+		}
+		callback(label, differences, configuredTarget)
 	}
 	return nil
 }
