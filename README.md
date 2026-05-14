@@ -100,13 +100,17 @@ The cache key is derived from:
 - The Bazel version (`bazel info release`)
 - The git tree SHA of the queried commit
 - The target pattern (e.g. `//...`)
+- Host `GOOS/GOARCH` of the running `target-determinator` binary
 - CLI options that may affect cquery results, such as `--filter-incompatible-targets` and the Bazel startup/build options passed via `--bazel-startup-opts` / `--bazel-opts`
+- Any `--cache-key-extra=<string>` discriminators passed by the caller (see [Sharing a cache across machines](#sharing-a-cache-across-machines))
 
 *Not* included in the cache key:
 
-- User and system bazelrc files (`~/.bazelrc`, `/etc/bazel.bazelrc`, and files they import)
-- The host machine (hardware, OS). Cache entries produced on one machine are not guaranteed to be valid on another (e.g. a different CPU architecture can change which platform-constrained targets are selected). Do not share the cache directory across machines.
-- Environment variables, whether they are used by Bazel or not.
+- User and system bazelrc files (`~/.bazelrc`, `/etc/bazel.bazelrc`, and files they import), including `common:<name>` / `build:<name>` sections activated by `--config=<name>`
+- Finer-grained host differences beyond GOOS/GOARCH (libc version, kernel, locally-installed toolchains, etc.)
+- Environment variables, whether they are used by Bazel or not (including `--repo_env`/`--action_env` values and `WORKSPACE_STATUS_COMMAND` output)
+
+If any of those affect your cquery results, either pass `--cache-key-extra` discriminators (preferred when the variation is small and known) or use `--nocache_results` to disable caching entirely.
 
 ### Environment variables and caching
 
@@ -115,6 +119,20 @@ Without caching, the "before" and "after" cquery calls are both made with the sa
 With caching, however, the "before" result may have been computed in an earlier pipeline run, under the environment variables that were in effect *at that time*. If an environment variable affected Bazel's query output (e.g. because it is referenced by `--workspace_status`, `--action_env`, `--test_env`, or a repo rule), the cached result reflects the old environment, while the "after" result reflects the new one. The two results are then compared under different conditions, which may produce spurious differences.
 
 In practice this matters most in release pipelines where stamping or versioning variables (e.g. `MY_PKG_VERSION`) change between runs. If you want to answer "which targets would have changed, assuming the environment is the same before and after?", run `target-determinator` with `--nocache_results` to force both computations to happen in the same environment.
+
+### Persisting the results cache to S3
+
+For shared caching across CI runners, pass `--s3-cache-url s3://bucket/optional/prefix`. When set, results are loaded from and saved to S3 instead of the local `--cache-dir`. The local cache directory is still used for the git worktree cache.
+
+AWS credentials are resolved via the standard AWS SDK chain (environment variables, `~/.aws/credentials`/`config`, EC2/ECS instance roles, etc.); the region is similarly resolved from `AWS_REGION` / `AWS_DEFAULT_REGION` or the shared config.
+
+### Sharing a cache across machines
+
+The results-cache key automatically includes the host `GOOS/GOARCH` of the running `target-determinator` binary, so entries produced on `linux/amd64` and `darwin/arm64` cannot collide even when stored in the same bucket.
+
+That still leaves a long tail of inputs that affect cquery results but are not captured automatically (see the caveats above) — most importantly user/system `.bazelrc` content, `common:<name>` / `build:<name>` rcfile sections activated by `--config=<name>`, `--repo_env`/`--action_env` values, `WORKSPACE_STATUS_COMMAND` output, and auto-detected host toolchains.
+
+If your fleet varies along any of those axes, pass `--cache-key-extra=<string>` (repeatable) to fold an explicit discriminator into the cache key. For example, a CI matrix might pass `--cache-key-extra=$CI_JOB_VARIANT --cache-key-extra=$BUILDKITE_AGENT_TAG`. Cache entries with different discriminator sets will not be served to each other.
 
 ## How to get Target Determinator
 

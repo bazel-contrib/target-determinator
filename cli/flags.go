@@ -82,7 +82,9 @@ type CommonFlags struct {
 	CompareQueriesAroundAnalysisCacheClear bool
 	FilterIncompatibleTargets              bool
 	CacheDirectory                         *string
+	S3CacheURL                             *string
 	NoCacheResults                         bool
+	CacheKeyExtras                         *MultipleStrings
 }
 
 func StrPtr() *string {
@@ -106,7 +108,9 @@ func RegisterCommonFlags() *CommonFlags {
 		CompareQueriesAroundAnalysisCacheClear: false,
 		FilterIncompatibleTargets:              true,
 		CacheDirectory:                         StrPtr(),
+		S3CacheURL:                             StrPtr(),
 		NoCacheResults:                         false,
+		CacheKeyExtras:                         &MultipleStrings{},
 	}
 	flag.BoolVar(&commonFlags.Version, "version", false, "Print the version of the tool and exit.")
 	flag.StringVar(commonFlags.WorkingDirectory, "working-directory", ".", "Working directory to query.")
@@ -127,8 +131,10 @@ func RegisterCommonFlags() *CommonFlags {
 	flag.StringVar(commonFlags.AnalysisCacheClearStrategy, "analysis-cache-clear-strategy", "skip", "Strategy for clearing the analysis cache. Accepted values: skip,shutdown,discard.")
 	flag.BoolVar(&commonFlags.CompareQueriesAroundAnalysisCacheClear, "compare-queries-around-analysis-cache-clear", false, "Whether to check for query result differences before and after analysis cache clears. This is a temporary flag for performing real-world analysis.")
 	flag.BoolVar(&commonFlags.FilterIncompatibleTargets, "filter-incompatible-targets", true, "Whether to filter out incompatible targets from the candidate set of affected targets.")
-	flag.StringVar(commonFlags.CacheDirectory, "cache-dir", defaultCacheDir(), "Cache directory to avoid existing re-computations. Note: home- and system- bazelrc files, environment variables, and host hardware/OS are not included in the results cache key. Use --nocache_results if necessary.")
+	flag.StringVar(commonFlags.CacheDirectory, "cache-dir", defaultCacheDir(), "Cache directory to avoid existing re-computations. Note: home- and system- bazelrc files and environment variables are not included in the results cache key (host GOOS/GOARCH is). Use --cache-key-extra to inject explicit discriminators, or --nocache_results to disable caching entirely.")
+	flag.StringVar(commonFlags.S3CacheURL, "s3-cache-url", "", "S3 URL (s3://bucket[/prefix]) to persist the results cache to. When set, results are loaded from and saved to S3 instead of --cache-dir. The local --cache-dir is still used for worktree caching. AWS credentials are resolved via the default SDK chain (env, ~/.aws, IAM role).")
 	flag.BoolVar(&commonFlags.NoCacheResults, "nocache_results", false, "Disable loading and saving of results to the cache.")
+	flag.Var(commonFlags.CacheKeyExtras, "cache-key-extra", "Opaque discriminator string folded into the results cache key. May be passed multiple times. Use to partition cache entries by inputs that target-determinator cannot detect automatically, such as a `--config=<name>` selection, user-level .bazelrc state, or `--repo_env` values.")
 	return &commonFlags
 }
 
@@ -164,6 +170,12 @@ func ValidateCommonFlags(commandName string, flags *CommonFlags) (targetPattern 
 func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*CommonConfig, error) {
 
 	// Context attributes
+
+	if *commonFlags.S3CacheURL != "" {
+		if err := pkg.ValidateS3CacheURL(*commonFlags.S3CacheURL); err != nil {
+			return nil, fmt.Errorf("invalid --s3-cache-url: %w", err)
+		}
+	}
 
 	workingDirectory, err := filepath.Abs(*commonFlags.WorkingDirectory)
 	if err != nil {
@@ -204,7 +216,9 @@ func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*Common
 		FilterIncompatibleTargets:              commonFlags.FilterIncompatibleTargets,
 		EnforceCleanRepo:                       commonFlags.EnforceCleanRepo == EnforceClean,
 		CacheDirectory:                         *commonFlags.CacheDirectory,
+		S3CacheURL:                             *commonFlags.S3CacheURL,
 		NoCacheResults:                         commonFlags.NoCacheResults,
+		CacheKeyExtras:                         *commonFlags.CacheKeyExtras,
 	}
 
 	// Non-context attributes

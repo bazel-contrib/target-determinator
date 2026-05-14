@@ -126,6 +126,25 @@ func TestSaveToCacheLoadFromCache(t *testing.T) {
 	if _, err := LoadFromCache(&ctxDiffCmd, "deadcafe", "//..."); err == nil {
 		t.Error("expected cache miss when BazelCmd hash changes, but got a hit")
 	}
+
+	// Adding a CacheKeyExtras entry must produce a different cache key (cache miss).
+	ctxExtra := *ctx
+	ctxExtra.CacheKeyExtras = []string{"variant=linux-amd64"}
+	if _, err := LoadFromCache(&ctxExtra, "deadcafe", "//..."); err == nil {
+		t.Error("expected cache miss when CacheKeyExtras changes, but got a hit")
+	}
+
+	// CacheKeyExtras ordering must not affect the cache key.
+	ctxExtraOrdered := *ctx
+	ctxExtraOrdered.CacheKeyExtras = []string{"a", "b"}
+	if err := SaveToCache(&ctxExtraOrdered, "deadcafe", "//...", qr); err != nil {
+		t.Fatalf("SaveToCache with extras failed: %v", err)
+	}
+	ctxExtraReordered := *ctx
+	ctxExtraReordered.CacheKeyExtras = []string{"b", "a"}
+	if _, err := LoadFromCache(&ctxExtraReordered, "deadcafe", "//..."); err != nil {
+		t.Errorf("expected cache hit when CacheKeyExtras order changes, got %v", err)
+	}
 }
 
 // collectAffectsCacheFields walks v (a struct or pointer to struct) and returns a map of
@@ -153,8 +172,8 @@ func collectAffectsCacheFields(v interface{}) map[string]interface{} {
 }
 
 // reflectionCacheableValue converts a reflect.Value to a JSON-serializable interface{}.
-// Slices whose element type implements fmt.Stringer are converted to a sorted []string.
-// Interface values implementing HashableKey are converted via HashKey().
+// Slices whose element type implements fmt.Stringer, or []string slices, are converted to a
+// sorted []string. Interface values implementing HashableKey are converted via HashKey().
 func reflectionCacheableValue(v reflect.Value) interface{} {
 	switch v.Kind() {
 	case reflect.Slice:
@@ -163,6 +182,14 @@ func reflectionCacheableValue(v reflect.Value) interface{} {
 			strs := make([]string, v.Len())
 			for i := 0; i < v.Len(); i++ {
 				strs[i] = v.Index(i).Interface().(fmt.Stringer).String()
+			}
+			sort.Strings(strs)
+			return strs
+		}
+		if v.Type().Elem().Kind() == reflect.String {
+			strs := make([]string, v.Len())
+			for i := 0; i < v.Len(); i++ {
+				strs[i] = v.Index(i).String()
 			}
 			sort.Strings(strs)
 			return strs

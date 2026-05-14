@@ -140,13 +140,24 @@ type Context struct {
 	FilterIncompatibleTargets bool
 	// EnforceCleanRepo controls whether we should fail if the repository is unclean.
 	EnforceCleanRepo bool `results_cache_key_ignore:"true"`
-	// CacheDirectory is the directory to store cached query results. If empty, caching is disabled.
+	// CacheDirectory is the directory used for worktree caching and (when S3CacheURL is empty) for storing
+	// cached query results. If both CacheDirectory and S3CacheURL are empty, results caching is disabled.
 	CacheDirectory string `results_cache_key_ignore:"true"`
+	// S3CacheURL, when non-empty, persists the results cache to S3 instead of the local CacheDirectory.
+	// Expected form: s3://bucket[/optional/prefix]. AWS credentials are resolved via the default
+	// SDK chain (environment variables, shared config, IAM role, etc.). The local CacheDirectory is
+	// still used for worktree caching when set.
+	S3CacheURL string `results_cache_key_ignore:"true"`
 	// IncludeDifferences controls whether difference explanations are computed for affected targets.
 	// When true, TransitiveConfiguredTargets is required and results must not be loaded from cache.
 	IncludeDifferences bool `results_cache_key_ignore:"true"`
 	// NoCacheResults disables both loading results from and saving results to the cache.
 	NoCacheResults bool `results_cache_key_ignore:"true"`
+	// CacheKeyExtras is an unordered set of opaque strings folded into the results cache key.
+	// Use it to discriminate between environments that the automatic cache key inputs cannot
+	// see — for example, a `--config=<name>` selection that activates lines in a user-level
+	// .bazelrc, a `--repo_env` value, or a host-toolchain identifier.
+	CacheKeyExtras []string
 }
 
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
@@ -189,7 +200,7 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 	}()
 
 	var treeSha string
-	cacheEnabled := context.CacheDirectory != "" && !context.NoCacheResults
+	cacheEnabled := (context.CacheDirectory != "" || context.S3CacheURL != "") && !context.NoCacheResults
 	if cacheEnabled && rev.GitRevision == CurrentWorkingCopyState {
 		uncleanStatuses, err := GitStatusFiltered(context.WorkspacePath, context.IgnoredFiles)
 		if err != nil {
@@ -272,8 +283,10 @@ func LoadIncompleteMetadata(context *Context, rev LabelledGitRev, targets Target
 		FilterIncompatibleTargets:              context.FilterIncompatibleTargets,
 		EnforceCleanRepo:                       context.EnforceCleanRepo,
 		CacheDirectory:                         context.CacheDirectory,
+		S3CacheURL:                             context.S3CacheURL,
 		IncludeDifferences:                     context.IncludeDifferences,
 		NoCacheResults:                         context.NoCacheResults,
+		CacheKeyExtras:                         context.CacheKeyExtras,
 	}
 	cleanupFunc := func() {}
 

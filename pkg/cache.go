@@ -4,11 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"path/filepath"
+	"runtime"
 	"sort"
 
 	ss "github.com/bazel-contrib/target-determinator/common/sorted_set"
@@ -26,10 +27,12 @@ var configuredTargetCacheDirname = "results"
 //     the git tree. Target-determinator does not read these files; if they
 //     change between invocations, use --nocache_results.
 //
-//   - The current machine's hardware and OS are not included. Cache entries
-//     produced on one machine are not guaranteed to be valid on another (e.g.
-//     different CPU architecture may change platform-constrained target sets).
-//     Do not share the cache directory across machines.
+//   - Host GOOS/GOARCH IS included via the HostPlatform field, so a shared
+//     cache (e.g. an S3 bucket) cannot serve entries between hosts of
+//     different OS/architecture. However, finer-grained differences (libc
+//     version, kernel, locally-installed toolchains, etc.) are not detected;
+//     callers with heterogeneous fleets should use Context.CacheKeyExtras to
+//     inject explicit discriminators.
 //
 //   - Environment variables forwarded to Bazel (CC, CXX, JAVA_HOME, BAZELRC,
 //     etc.) are not included. Changing these between invocations can affect
@@ -40,6 +43,11 @@ type CacheKey struct {
 	BazelVersion  string
 	GitTreeSHA    string
 	TargetPattern string
+	// HostPlatform is "GOOS/GOARCH" of the host running target-determinator. Included so
+	// that a shared results cache (e.g. an S3 bucket used by a multi-OS CI fleet) cannot
+	// serve entries produced under a different OS/arch — which can change
+	// platform-constrained select() resolutions even on identical inputs.
+	HostPlatform string
 	// Context holds the Context fields that affect the cache key (i.e. those not tagged
 	// results_cache_key_ignore:"true"), plus the opaque hash returned by BazelCmd.HashKey().
 	// encoding/json marshals map keys alphabetically, ensuring a deterministic serialization.
@@ -82,6 +90,7 @@ func ComputeCacheKey(context *Context, gitSHA string, targetPattern string) (str
 		BazelVersion:  bazelRelease,
 		GitTreeSHA:    gitSHA,
 		TargetPattern: targetPattern,
+		HostPlatform:  runtime.GOOS + "/" + runtime.GOARCH,
 		Context:       contextKey,
 	}
 
@@ -107,10 +116,16 @@ func collectCacheContextFields(ctx *Context) map[string]interface{} {
 		ignoredFiles[i] = f.String()
 	}
 	sort.Strings(ignoredFiles)
+
+	extras := make([]string, len(ctx.CacheKeyExtras))
+	copy(extras, ctx.CacheKeyExtras)
+	sort.Strings(extras)
+
 	return map[string]interface{}{
 		"BazelCmd":                  ctx.BazelCmd.HashKey(),
 		"IgnoredFiles":              ignoredFiles,
 		"FilterIncompatibleTargets": ctx.FilterIncompatibleTargets,
+		"CacheKeyExtras":            extras,
 	}
 }
 
@@ -135,8 +150,12 @@ func hashFile(path string) (string, error) {
 // metadata, such as the git commit message, changes).
 // Returns (results, error). If error is non-nil, the cache was not hit.
 func LoadFromCache(context *Context, treeSHA string, targetPattern string) (*QueryResults, error) {
-	if context.CacheDirectory == "" {
-		return nil, fmt.Errorf("cache directory not configured")
+	storage, err := resultsStorageFor(context)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cache storage: %w", err)
+	}
+	if storage == nil {
+		return nil, fmt.Errorf("cache not configured")
 	}
 
 	cacheKey, err := ComputeCacheKey(context, treeSHA, targetPattern)
@@ -144,16 +163,14 @@ func LoadFromCache(context *Context, treeSHA string, targetPattern string) (*Que
 		return nil, fmt.Errorf("failed to compute cache key: %w", err)
 	}
 
-	cacheItemPath := filepath.Join(context.CacheDirectory, configuredTargetCacheDirname, cacheKey)
+	log.Printf("Attempting to load from cache: %s", storage.Describe(cacheKey))
 
-	log.Printf("Attempting to load from cache: %s", cacheItemPath)
-
-	data, err := os.ReadFile(cacheItemPath)
+	data, err := storage.Load(cacheKey)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, ErrCacheMiss) {
 			return nil, fmt.Errorf("cache miss")
 		}
-		return nil, fmt.Errorf("failed to read cache file: %w", err)
+		return nil, fmt.Errorf("failed to read cache entry: %w", err)
 	}
 
 	var serialized SerializedQueryResults
@@ -188,7 +205,11 @@ func LoadFromCache(context *Context, treeSHA string, targetPattern string) (*Que
 
 // SaveToCache saves QueryResults to cache
 func SaveToCache(context *Context, gitSHA string, targetPattern string, queryResults *QueryResults) error {
-	if context.CacheDirectory == "" {
+	storage, err := resultsStorageFor(context)
+	if err != nil {
+		return fmt.Errorf("failed to create cache storage: %w", err)
+	}
+	if storage == nil {
 		return nil // Caching disabled
 	}
 
@@ -197,12 +218,6 @@ func SaveToCache(context *Context, gitSHA string, targetPattern string, queryRes
 		return fmt.Errorf("failed to compute cache key: %w", err)
 	}
 
-	// Create cache directory if it doesn't exist
-	if err := os.MkdirAll(context.CacheDirectory, 0755); err != nil {
-		return fmt.Errorf("failed to create cache directory: %w", err)
-	}
-
-	// Serialize matching targets
 	matchingTargetsData, err := serializeMatchingTargets(queryResults.MatchingTargets)
 	if err != nil {
 		return fmt.Errorf("failed to serialize matching targets: %w", err)
@@ -220,35 +235,11 @@ func SaveToCache(context *Context, gitSHA string, targetPattern string, queryRes
 		return fmt.Errorf("failed to marshal cache data: %w", err)
 	}
 
-	cacheItemDir := filepath.Join(context.CacheDirectory, configuredTargetCacheDirname)
-	cacheItemPath := filepath.Join(cacheItemDir, cacheKey)
-	if err := os.MkdirAll(cacheItemDir, 0755); err != nil {
-		return fmt.Errorf("failed to create cache dir (%s): %w", cacheItemDir, err)
+	if err := storage.Save(cacheKey, data); err != nil {
+		return err
 	}
 
-	tmpFile, err := os.CreateTemp(cacheItemDir, cacheKey+".tmp.*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp cache file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer func() {
-		if tmpPath != "" {
-			os.Remove(tmpPath)
-		}
-	}()
-	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("failed to write temp cache file: %w", err)
-	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("failed to close temp cache file: %w", err)
-	}
-	if err := os.Rename(tmpPath, cacheItemPath); err != nil {
-		return fmt.Errorf("failed to move temp cache file to final location: %w", err)
-	}
-	tmpPath = ""
-
-	log.Printf("Saved results to cache: %s", cacheItemPath)
+	log.Printf("Saved results to cache: %s", storage.Describe(cacheKey))
 	return nil
 }
 
