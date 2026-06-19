@@ -486,11 +486,12 @@ public abstract class Tests {
   @Test
   public void testBranchRevision() throws Exception {
     gitCheckout(Commits.TWO_TESTS);
-    gitCheckoutBranch(Commits.TWO_TESTS_BRANCH);
-    doTest(Commits.ONE_TEST, Commits.TWO_TESTS_BRANCH, Set.of("//java/example:OtherExampleTest"));
+    final String twoTestsBranch = "two-tests-branch";
+    gitCheckoutBranch(twoTestsBranch);
+    doTest(Commits.ONE_TEST, twoTestsBranch, Set.of("//java/example:OtherExampleTest"));
     assertEquals(
         "Initial branch should be checked out after running the target determinator",
-        Commits.TWO_TESTS_BRANCH,
+        twoTestsBranch,
         gitBranch());
   }
 
@@ -643,109 +644,71 @@ public abstract class Tests {
 
 class Commits {
 
-  public static final String NO_TARGETS = "d2862de5e63c8be0866056e6307049c159fb9e47";
-  public static final String ONE_TEST = "65dfed228e75a7f4ad361fe65512a1e58ef83b1c";
-  public static final String ONE_TEST_BAZEL7_0_0 = "30dfd560934f45b8af30601f9d4efe1d5726de5c";
-  public static final String TWO_TESTS = "bd1f7781e0d5ee66f3235a1adb8f656d5ea35c2d";
-  public static final String HAS_JVM_FLAGS = "50609b7d1260b449ceed57718165981986880d97";
-  public static final String EXPLICIT_DEFAULT_VALUE = "34213eb339cbb5d1544c83c1aa8c19528c147e0d";
-  public static final String TWO_NATIVE_TESTS_BAZEL5_4_0 = "97637aedbfdf0be9c9d440c56ddc10c842fd9e4a";
-  public static final String TWO_NATIVE_TESTS_BAZEL6_0_0 = "e82404bbedebb800fed8053dfc4f2ebdbcdebcd6";
-  public static final String MODIFIED_TEST_SRC = "4a0e589ac8d0d33e8e6109b07d0d60a833261eb3";
-  public static final String TWO_LANGUAGES_OF_TESTS = "805a14f65edd9e3d42b6ec8524397a269065df49";
-  public static final String BAZELRC_TEST_ENV = "9afe362266b9a7cd0d9dd63d16bdf9849db71199";
-  public static final String BAZELRC_AFFECTING_JAVA = "b1f9504dcba4e0fdc2cf344048307fdd7ac9baec";
-  public static final String SIMPLE_TARGETS_BAZEL4_0_0 = "877b2f679e65595e895a1356994344bf4b4ce45f";
-  public static final String SIMPLE_TARGETS_BAZEL5_4_0 = "7cc16e4080aa7b20fa80c2e4e1dacb353ef09275";
-  public static final String SIMPLE_TARGETS_BAZEL6_0_0 = "7efcdd39046bd3d0fdd9c9ab34259ce8894c5cfb";
-  public static final String ADD_OPTIONAL_PRESENT_EMPTY_BAZELRC =
-      "50f6d42a9fa62760ec0e2bb22a51a5e68ed87813";
-  public static final String SIMPLE_JAVA_LIBRARY_RULE = "3ced8e757bbdb853553c62754ad68bce3be9033f";
-  public static final String SIMPLE_JAVA_LIBRARY_TARGETS =
-      "a96d8a14615e972f6a833ba70bb0a9a806e781e0";
-  public static final String SIMPLE_JAVA_LIBRARY_AND_JAVA_TESTS =
-      "a82f3ba70787617a78c60c2c460bf954c30be4a0";
-  public static final String CHANGE_TRANSITIVE_FILE = "e93ab7f1081c2d25b54e325f402875230cb37bd7";
-  public static final String CHANGE_TRANSITIVE_FILE_BAZEL4_0_0 = "c90dce5b2b6c888ba08b8cdac5eb60b031ff447f";
-  public static final String TWO_LANGUAGES_OPTIONAL_MISSING_TRY_IMPORT =
-      "69ed4974b6cccb990415537ffe19cc59c9b22306";
-  public static final String TWO_LANGUAGES_OPTIONAL_PRESENT_BAZELRC_AFFECTING_JAVA =
-      "b92b6f07812f6d440c515280d344b491614f3c6b";
-  public static final String TWO_LANGUAGES_NOOP_IMPORTED_BAZELRC =
-      "ebecc480402cf271f258afaa533cf36a305145b8";
-  public static final String TWO_LANGUAGES_IMPORTED_BAZELRC_AFFECTING_JAVA =
-      "5f8a5eafa64838d18e66c3a2977fd72c9a81f7f5";
-  public static final String JAVA_TESTS_AND_SIMPLE_JAVA_RULES =
-      "92d3c3c260a7c856b59e33df40f55dcfa40f04f6";
-  public static final String DEP_ON_STARLARK_TARGET = "af5c807d6254150c82a33f36fce21c5ced4f50ff";
-  public static final String CHANGE_STARLARK_RULE_IMPLEMENTATION =
-      "f9ef8e3ad134d42b4d7391e8f02179176971a47d";
-  public static final String NOOP_REFACTOR_STARLARK_RULE_IMPLEMENTATION =
-      "8aa249993b0263ea4adf83d6b0cd851b711baf56";
-  public static final String RULES_IN_EXTERNAL_REPO = "41a8a5272e98f8feb26f73327a87f06ca19404a1";
-  public static final String NOOP_REFACTOR_IN_WORKSPACE_FILE =
-      "f4325420d0b011a841a60a2c612ef4997aa5359b";
-  public static final String ADD_SIMPLE_PACKAGE_RULE = "52609340c87c6cee9d6e3ac26564a46ff9a6c17a";
-  public static final String REFACTORED_WORKSPACE_INDIRECTLY =
-      "b3d8d9c109f1fc003ce5744961dac58773c2c71b";
-  public static final String PATHOLOGICAL_RULES_SINGLE_TARGET =
-      "d3fa4261ba55826781c33a1e6814de7effa8f48f";
-  public static final String PATHOLOGICAL_RULES_TWO_TARGETS =
-      "436d3472cd7f3c8a73cb23e0d85e86aa2eac0e0d";
-  public static final String PATHOLOGICAL_RULES_THREE_TARGETS =
-      "5987e2a10abef4087ae472e6171cda506190ca95";
-  public static final String PATHOLOGICAL_RULES_FIVE_TARGETS =
-      "8e5e5b4b1ac7eaf02ddafe9f551a1f6eda5b2191";
-  public static final String CHANGE_ATTRIBUTES_VIA_INDIRECTION =
-      "f4dfccca871e962bd4fa52f1d55e5169192b8343";
-  public static final String HAS_GLOBS = "018f7c0b96891ca644a05ae15d8d21be020b4355";
-  public static final String CHANGE_GLOBS = "307612ea08fc732e41815c4b24dfbdb47d741955";
-  public static final String ADD_BUILD_FILE_INTERFERING_WTH_GLOBS =
-      "8fbfba87540b48bb5e4b91a62180d4d5c6d6678e";
-  public static final String BAZELRC_INCLUDED_EMPTY = "89f1396b3341c038536ab7c17942b0c5a35515bc";
-  public static final String JAVA_USED_IN_GENRULE = "b941205e5a12ff6c5ae6305404b7dfe0a2e407c9";
-  public static final String BAZELRC_INCLUDED_JAVACOPT = "20f1af740abde1eea14af3668d8ffb2102bfcf06";
-  public static final String BAZELRC_HOST_JAVACOPT = "23948e3f11a51d3e7dc45c46853ae0a15cac6abf";
-  public static final String ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY =
-      "c0ef0f9805e65817299eb7a794ed66655c0dd5aa";
-  public static final String REDUCE_DEPENDENCY_VISIBILITY =
-      "396dae111684b893ec6e04b2f6e86ed603a01082";
-  public static final String ONE_TEST_WITH_GITIGNORE = "51bf9b729dddf35694019c19b5dbffb36bf83af4";
-  public static final String TWO_TESTS_WITH_GITIGNORE = "55845a3a08525f2aa66c3d7a2115dad684c46995";
-  public static final String SUBMODULE_ADD_TRIVIAL_SUBMODULE =
-      "b88ddcfe3da63c8308ce6d3274dd424d2c7b211a";
-  public static final String SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY =
-      "4e9b396b3a8030925d7b544cda3f1edbc199810f";
-  public static final String SUBMODULE_CHANGE_DIRECTORY =
-      "1cef87480c2c1dac74cc9de7470504fbd2b80265";
-  public static final String SUBMODULE_DELETE_SUBMODULE =
-      "d1b1d8f07f2e99429bafda134282b97588c69b3d";
-  public static final String TWO_TESTS_BRANCH =
-      "two-tests-branch"; // Local only (created by the test case).
-  public static final String ONE_SH_TEST =
-      "ff7e60d535564a0695a5bf9ed1774bacc480bf50"; // (v1/sh-test) add an executable shell file and BUILD.bazel file
-  public static final String SH_TEST_NOT_EXECUTABLE =
-      "6452291f3dcea1a5cdb332463308b70325a833e0"; // (v1/sh-test-non-executable) make shell file non-executable
-  public static final String INCOMPATIBLE_TARGET =
-      "69b4567d904cad46a584901c82c2959be89ae458";
-  public static final String INCOMPATIBLE_TARGET_BAZEL7_0_0 = "d2dbc66ed32cb0e95009d2a5d4ce76f3374ddb7d";
-  public static final String SELECT_TARGET = "7562088a92cdb20cccb99b996c1c147b0773e60a";
+  public static final String NO_TARGETS = "v1/new-branch";
+  public static final String ONE_TEST = "v1/one-test";
+  public static final String ONE_TEST_BAZEL7_0_0 = "v1/one-test-bazel-7.0.0";
+  public static final String TWO_TESTS = "v1/two-tests";
+  public static final String HAS_JVM_FLAGS = "v1/has-jvm-flags";
+  public static final String EXPLICIT_DEFAULT_VALUE = "v1/explicit-default-value";
+  public static final String TWO_NATIVE_TESTS_BAZEL5_4_0 = "v1/two-native-tests-bazel-5.4.0";
+  public static final String TWO_NATIVE_TESTS_BAZEL6_0_0 = "v1/two-native-tests-bazel-6.0.0";
+  public static final String MODIFIED_TEST_SRC = "v1/modified-test-src";
+  public static final String TWO_LANGUAGES_OF_TESTS = "v1/two-languages-of-tests";
+  public static final String BAZELRC_TEST_ENV = "v1/bazelrc-test-env";
+  public static final String BAZELRC_AFFECTING_JAVA = "v1/bazelrc-affecting-java";
+  public static final String SIMPLE_TARGETS_BAZEL5_4_0 = "v1/simple-targets-bazel-5.4.0";
+  public static final String SIMPLE_TARGETS_BAZEL6_0_0 = "v1/simple-targets-bazel-6.0.0";
+  public static final String ADD_OPTIONAL_PRESENT_EMPTY_BAZELRC = "v1/optional-present-empty-try-import";
+  public static final String SIMPLE_JAVA_LIBRARY_RULE = "v1/simple-java-library-rule";
+  public static final String SIMPLE_JAVA_LIBRARY_TARGETS = "v1/simple-java-library-targets";
+  public static final String SIMPLE_JAVA_LIBRARY_AND_JAVA_TESTS = "v1/simple-java-library-and-java-tests";
+  public static final String CHANGE_TRANSITIVE_FILE = "v1/change-transitive-file";
+  public static final String CHANGE_TRANSITIVE_FILE_BAZEL4_0_0 = "v1/change-transitive-file-bazel-4.0.0";
+  public static final String TWO_LANGUAGES_OPTIONAL_MISSING_TRY_IMPORT = "v1/two-languages-missing-try-import";
+  public static final String TWO_LANGUAGES_OPTIONAL_PRESENT_BAZELRC_AFFECTING_JAVA = "v1/two-languages-optional-present-bazelrc-affecting-java";
+  public static final String TWO_LANGUAGES_NOOP_IMPORTED_BAZELRC = "v1/two-languages-noop-imported-bazelrc";
+  public static final String TWO_LANGUAGES_IMPORTED_BAZELRC_AFFECTING_JAVA = "v1/two-languages-imported-bazelrc-affecting-java";
+  public static final String JAVA_TESTS_AND_SIMPLE_JAVA_RULES = "v1/java-tests-and-simple-java-library-rule";
+  public static final String DEP_ON_STARLARK_TARGET = "v1/dep-on-starlark-target";
+  public static final String CHANGE_STARLARK_RULE_IMPLEMENTATION = "v1/change-starlark-rule-implementation";
+  public static final String NOOP_REFACTOR_STARLARK_RULE_IMPLEMENTATION = "v1/noop-refactor-starlark-rule-implementation";
+  public static final String RULES_IN_EXTERNAL_REPO = "v1/move-rules-to-external-repo";
+  public static final String NOOP_REFACTOR_IN_WORKSPACE_FILE = "v1/noop-refactor-in-workspace-file";
+  public static final String ADD_SIMPLE_PACKAGE_RULE = "v1/add-simple-package-rule";
+  public static final String REFACTORED_WORKSPACE_INDIRECTLY = "v1/refactored-workspace-indirectly";
+  public static final String PATHOLOGICAL_RULES_SINGLE_TARGET = "v1/pathological-rules-single-target";
+  public static final String PATHOLOGICAL_RULES_TWO_TARGETS = "v1/pathological-rules-two-targets";
+  public static final String PATHOLOGICAL_RULES_THREE_TARGETS = "v1/pathological-rules-three-targets";
+  public static final String PATHOLOGICAL_RULES_FIVE_TARGETS = "v1/pathological-rules-five-targets";
+  public static final String CHANGE_ATTRIBUTES_VIA_INDIRECTION = "v1/set-flags-via-indirected-rules";
+  public static final String HAS_GLOBS = "v1/globs";
+  public static final String CHANGE_GLOBS = "v1/globs-changed";
+  public static final String ADD_BUILD_FILE_INTERFERING_WTH_GLOBS = "v1/globs-add-interfering-build-file";
+  public static final String BAZELRC_INCLUDED_EMPTY = "v1/bazelrc-included-empty";
+  public static final String JAVA_USED_IN_GENRULE = "v1/java-used-in-genrule";
+  public static final String BAZELRC_INCLUDED_JAVACOPT = "v1/bazelrc-included-javacopt";
+  public static final String BAZELRC_HOST_JAVACOPT = "v1/bazelrc-host-javacopt";
+  public static final String ADD_INDIRECTION_FOR_SIMPLE_JAVA_LIBRARY = "v1/add-indirection-for-simple-java-library";
+  public static final String REDUCE_DEPENDENCY_VISIBILITY = "v1/reduce-dependency-visibility";
+  public static final String ONE_TEST_WITH_GITIGNORE = "v1/one-test-with-gitignore";
+  public static final String TWO_TESTS_WITH_GITIGNORE = "v1/two-tests-with-gitignore";
+  public static final String SUBMODULE_ADD_TRIVIAL_SUBMODULE = "v1/submodule-add-trivial-submodule";
+  public static final String SUBMODULE_ADD_DEPENDENT_ON_SIMPLE_JAVA_LIBRARY = "v1/submodule-add-dependent-of-simple_java_library";
+  public static final String SUBMODULE_CHANGE_DIRECTORY = "v1/submodule-change-directory";
+  public static final String SUBMODULE_DELETE_SUBMODULE = "v1/submodule-delete-submodule";
+  public static final String ONE_SH_TEST = "v1/sh-test"; // Add an executable shell file and BUILD.bazel file
+  public static final String SH_TEST_NOT_EXECUTABLE = "v1/sh-test-non-executable"; // Make shell test file non-executable
+  public static final String INCOMPATIBLE_TARGET = "v1/incompatible-target";
+  public static final String INCOMPATIBLE_TARGET_BAZEL7_0_0 = "v1/incompatible-target-bazel-7.0.0";
+  public static final String SELECT_TARGET = "v1/platform-specific-selects";
+  public static final String CHANGED_NONLINUX_SRC = "v1/platform-specific-selects-change-non-linux-src";
+  public static final String CHANGED_LINUX_SRC = "v1/platform-specific-selects-change-linux-src";
+  public static final String CHANGED_NONLINUX_DEP = "v1/platform-specific-selects-change-non-linux-dep";
+  public static final String CHANGED_LINUX_DEP = "v1/platform-specific-selects-change-linux-dep";
+  public static final String ALIAS_ADD_TARGET = "v1/alias-add-target";
+  public static final String ALIAS_CHANGE_ACTUAL = "v1/alias-change-actual";
+  public static final String ALIAS_CHANGE_TARGET_THROUGH_ALIAS = "v1/alias-change-target-through-alias";
+  public static final String ALIAS_ADD_TARGET_TO_FILE = "v1/alias-file-add-target";
+  public static final String ALIAS_CHANGE_TARGET_THROUGH_ALIAS_TO_FILE = "v1/alias-file-change-actual";
 
-  public static final String CHANGED_NONLINUX_SRC = "28310014a760aae84e96254e04337a99bf6b39ea";
-
-  public static final String CHANGED_LINUX_SRC = "e46148623b7e3e141f2a1ac00d708db1e65f9397";
-
-  public static final String CHANGED_NONLINUX_DEP = "a8c04169ef46095d040048610b24adbea4027f32";
-
-  public static final String CHANGED_LINUX_DEP = "c5a9f0ad1fc7fc9c3dd31fd904fcc97a55bd2fce";
-
-  public static final String ALIAS_ADD_TARGET = "194478bcdfb3f8c40b3dd02d06d2be1cd335b83b";
-
-  public static final String ALIAS_CHANGE_ACTUAL = "ec19104291a3ea7cb61fb54ecdeaee73127bf284";
-
-  public static final String ALIAS_CHANGE_TARGET_THROUGH_ALIAS = "3d9788053a2eed1a2f3beb05070872526ebdf76e";
-
-  public static final String ALIAS_ADD_TARGET_TO_FILE = "7be0f96f26742daec661c2ebfbb08b88b6355a3b";
-
-  public static final String ALIAS_CHANGE_TARGET_THROUGH_ALIAS_TO_FILE = "68fbd3661f3626e2df6a55b079444adbf76b5a3b";
 }
