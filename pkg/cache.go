@@ -48,12 +48,15 @@ type CacheKey struct {
 
 // SerializedQueryResults is the structure that gets saved to disk
 type SerializedQueryResults struct {
+	Version int
 	// Serialized protobuf of ConfiguredTargets
 	MatchingTargetsData []byte
 	BazelRelease        string
 	NormalizerMapping   map[string]string
 	// Key: "<label>\x00<config>", value: raw SHA256 bytes.
-	PrecomputedHashes map[string][]byte
+	PrecomputedHashes           map[string][]byte
+	PrecomputedSourceFileHashes map[string][]byte
+	MetadataFingerprints        map[string][]byte
 }
 
 // ComputeCacheKey generates a unique cache key based on the binary hash, git SHA, and CLI options
@@ -160,6 +163,9 @@ func LoadFromCache(context *Context, treeSHA string, targetPattern string) (*Que
 	if err := json.Unmarshal(data, &serialized); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
 	}
+	if serialized.Version != 2 {
+		return nil, fmt.Errorf("unsupported cache entry version %d", serialized.Version)
+	}
 
 	// Deserialize matching targets
 	matchingTargets, err := deserializeMatchingTargets(serialized.MatchingTargetsData)
@@ -181,6 +187,8 @@ func LoadFromCache(context *Context, treeSHA string, targetPattern string) (*Que
 	if err := queryResults.TargetHashCache.RestoreHashes(serialized.PrecomputedHashes); err != nil {
 		return nil, fmt.Errorf("failed to restore hashes from cache: %w", err)
 	}
+	queryResults.TargetHashCache.RestoreSourceFileHashes(serialized.PrecomputedSourceFileHashes)
+	queryResults.TargetHashCache.RestoreMetadataFingerprints(serialized.MetadataFingerprints)
 
 	log.Printf("Cache hit! Loaded results from cache")
 	return queryResults, nil
@@ -207,12 +215,19 @@ func SaveToCache(context *Context, gitSHA string, targetPattern string, queryRes
 	if err != nil {
 		return fmt.Errorf("failed to serialize matching targets: %w", err)
 	}
+	metadataFingerprints, err := queryResults.TargetHashCache.ExtractMetadataFingerprints()
+	if err != nil {
+		return fmt.Errorf("failed to serialize metadata fingerprints: %w", err)
+	}
 
 	serialized := SerializedQueryResults{
-		MatchingTargetsData: matchingTargetsData,
-		BazelRelease:        queryResults.BazelRelease,
-		NormalizerMapping:   queryResults.TargetHashCache.normalizer.Mapping,
-		PrecomputedHashes:   queryResults.TargetHashCache.ExtractHashes(),
+		Version:                     2,
+		MatchingTargetsData:         matchingTargetsData,
+		BazelRelease:                queryResults.BazelRelease,
+		NormalizerMapping:           queryResults.TargetHashCache.normalizer.Mapping,
+		PrecomputedHashes:           queryResults.TargetHashCache.ExtractHashes(),
+		PrecomputedSourceFileHashes: queryResults.TargetHashCache.ExtractSourceFileHashes(),
+		MetadataFingerprints:        metadataFingerprints,
 	}
 
 	data, err := json.Marshal(serialized)

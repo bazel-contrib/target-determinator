@@ -218,9 +218,19 @@ public class TargetDeterminatorSpecificFlagsTest {
   }
 
   private String getOutput(String commitBefore, String targets, boolean enforceClean, boolean deleteCachedWorktree, List<String> flags) throws Exception {
+    return getResult(testDir, commitBefore, targets, enforceClean, deleteCachedWorktree, flags).stdout();
+  }
+
+  private TargetDeterminator.Result getResult(
+      Path workspace,
+      String commitBefore,
+      String targets,
+      boolean enforceClean,
+      boolean deleteCachedWorktree,
+      List<String> flags) throws Exception {
     final List<String> args = Stream.concat(
         Stream.of("--working-directory",
-            testDir.toString(),
+            workspace.toString(),
             "--bazel", "bazelisk",
             "--targets", targets,
             "--nocache_results"
@@ -234,6 +244,7 @@ public class TargetDeterminatorSpecificFlagsTest {
       args.add("--delete-cached-worktree");
     }
     args.add(commitBefore);
-    return TargetDeterminator.getOutput(testDir, args.toArray(new String[0]));
+    return TargetDeterminator.getResult(workspace, args.toArray(new String[0]));
   }
+
 }

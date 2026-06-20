@@ -152,7 +152,7 @@ type Context struct {
 // FullyProcess returns the before and after metadata maps, with fully filled caches.
 func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledGitRev, targets TargetsList) (*QueryResults, *QueryResults, error) {
 	log.Printf("Processing %s", revBefore)
-	queryInfoBefore, err := fullyProcessRevision(context, revBefore, targets)
+	queryInfoBefore, completeBefore, err := fullyProcessRevision(context, revBefore, targets, true, nil)
 	if err != nil {
 		if queryInfoBefore == nil {
 			return nil, nil, err
@@ -165,11 +165,71 @@ func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledG
 		}
 	}
 
-	// At this point, we assume that the working copy is back to its pristine state.
+	var changedPaths *ChangedPathSet
+	reuseSourceFileHashes := false
+	if queryInfoBefore != nil && queryInfoBefore.QueryError == nil {
+		var changedPathsErr error
+		changedPaths, changedPathsErr = GitChangedPaths(context, revBefore, revAfter)
+		if changedPathsErr != nil {
+			log.Printf("Source file hash reuse disabled: failed to determine changed files: %v", changedPathsErr)
+		} else {
+			reuseSourceFileHashes = true
+		}
+	}
+
+	configureAfter := func(queryInfo *QueryResults) bool {
+		if reuseSourceFileHashes {
+			queryInfo.TargetHashCache.ReuseUnchangedSourceFileHashesFrom(queryInfoBefore.TargetHashCache, changedPaths)
+			if metadataAndSourceChangesProveNoAffectedTargets(queryInfoBefore, queryInfo, changedPaths) {
+				log.Printf("Skipping hash prefill: cquery metadata is unchanged and changed files are outside the transitive source graph")
+				queryInfo.NoAffectedTargets = true
+				return true
+			}
+		}
+		return false
+	}
+
+	// The before revision hashes can be filled while the main working copy is available for the
+	// after revision.
 	log.Printf("Processing %s", revAfter)
-	queryInfoAfter, err := fullyProcessRevision(context, revAfter, targets)
+	queryInfoAfter, completeAfter, err := fullyProcessRevision(context, revAfter, targets, true, configureAfter)
 	if err != nil {
+		if completeBefore != nil {
+			if completeErr := completeBefore(); completeErr != nil {
+				return nil, nil, fmt.Errorf("after revision failed after before prefill also failed: after error: %w; before completion error: %v", err, completeErr)
+			}
+		}
 		return nil, nil, err
+	}
+
+	complete := func(rev LabelledGitRev, completePrefill func() error) error {
+		if completePrefill == nil {
+			return nil
+		}
+		if err := completePrefill(); err != nil {
+			return fmt.Errorf("failed to complete cache prefilling for %s: %w", rev, err)
+		}
+		return nil
+	}
+	if reuseSourceFileHashes {
+		if err := complete(revAfter, completeAfter); err != nil {
+			if completeBefore != nil {
+				if completeErr := completeBefore(); completeErr != nil {
+					return nil, nil, fmt.Errorf("%w; also failed to complete cache prefilling for %s: %v", err, revBefore, completeErr)
+				}
+			}
+			return nil, nil, err
+		}
+		if err := complete(revBefore, completeBefore); err != nil {
+			return nil, nil, err
+		}
+	} else {
+		if err := complete(revBefore, completeBefore); err != nil {
+			return nil, nil, err
+		}
+		if err := complete(revAfter, completeAfter); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	return queryInfoBefore, queryInfoAfter, nil
@@ -180,20 +240,13 @@ func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledG
 // but that the user may want to use the results anyway, despite their query results being empty.
 // This may be useful when the "before" commit is broken for query, as it allows for running all
 // matching targets from the "after" query, despite the "before" being broken.
-func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsList) (queryInfo *QueryResults, err error) {
-	defer func() {
-		innerErr := gitCheckout(context.WorkspacePath, context.OriginalRevision)
-		if innerErr != nil && err == nil {
-			err = fmt.Errorf("failed to check out original commit during cleanup: %v", innerErr)
-		}
-	}()
-
+func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsList, asyncPrefill bool, configureQueryInfo func(*QueryResults) bool) (queryInfo *QueryResults, completePrefill func() error, err error) {
 	var treeSha string
 	cacheEnabled := context.CacheDirectory != "" && !context.NoCacheResults
 	if cacheEnabled && rev.GitRevision == CurrentWorkingCopyState {
 		uncleanStatuses, err := GitStatusFiltered(context.WorkspacePath, context.IgnoredFiles)
 		if err != nil {
-			return nil, fmt.Errorf("failed to check git status for caching: %w", err)
+			return nil, nil, fmt.Errorf("failed to check git status for caching: %w", err)
 		}
 		if len(uncleanStatuses) > 0 {
 			log.Println("Skipping cache: working copy is unclean")
@@ -209,7 +262,7 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 		var treeErr error
 		treeSha, treeErr = GitTreeSHA(context, gitRev)
 		if treeErr != nil {
-			return nil, fmt.Errorf("failed to compute tree SHA for %s: %w", rev, treeErr)
+			return nil, nil, fmt.Errorf("failed to compute tree SHA for %s: %w", rev, treeErr)
 		}
 
 		if context.IncludeDifferences {
@@ -219,31 +272,125 @@ func fullyProcessRevision(context *Context, rev LabelledGitRev, targets TargetsL
 			cachedResults, cacheErr := LoadFromCache(context, treeSha, targets.String())
 			if cacheErr == nil {
 				log.Println("Cache hit: returning cached results")
-				return cachedResults, nil
+				return cachedResults, nil, nil
 			}
 			log.Printf("Cache load failed: %v", cacheErr)
 		}
 	}
 
 	queryInfo, loadMetadataCleanup, err := LoadIncompleteMetadata(context, rev, targets)
-	defer loadMetadataCleanup()
 	if err != nil {
-		return queryInfo, fmt.Errorf("failed to load metadata at %s: %w", rev, err)
+		loadMetadataCleanup()
+		if checkoutErr := gitCheckout(context.WorkspacePath, context.OriginalRevision); checkoutErr != nil {
+			return queryInfo, nil, fmt.Errorf("failed to load metadata at %s: %w; also failed to check out original commit during cleanup: %v", rev, err, checkoutErr)
+		}
+		return queryInfo, nil, fmt.Errorf("failed to load metadata at %s: %w", rev, err)
 	}
 
-	log.Println("Hashing targets")
-	if err := queryInfo.PrefillCache(); err != nil {
-		return nil, fmt.Errorf("failed to calculate hashes at %s: %w", rev, err)
+	cleanupAfterHash := loadMetadataCleanup
+	restoreAfterHash := true
+	if asyncPrefill && rev.GitRevision != CurrentWorkingCopyState {
+		cleanupAfterHash, err = prepareAsyncPrefill(context, rev, queryInfo, loadMetadataCleanup)
+		if err != nil {
+			return queryInfo, nil, err
+		}
+		restoreAfterHash = false
+	}
+	runCleanup := func(prefillErr error) error {
+		cleanupAfterHash()
+		if restoreAfterHash {
+			if checkoutErr := gitCheckout(context.WorkspacePath, context.OriginalRevision); checkoutErr != nil && prefillErr == nil {
+				return fmt.Errorf("failed to check out original commit during cleanup: %w", checkoutErr)
+			} else if checkoutErr != nil {
+				return fmt.Errorf("%w; also failed to check out original commit during cleanup: %v", prefillErr, checkoutErr)
+			}
+		}
+		return prefillErr
 	}
 
-	// Save to cache if caching is enabled
-	if cacheEnabled {
-		if saveErr := SaveToCache(context, treeSha, targets.String(), queryInfo); saveErr != nil {
-			log.Printf("Warning: failed to save to cache: %v", saveErr)
+	skipPrefill := false
+	if configureQueryInfo != nil {
+		skipPrefill = configureQueryInfo(queryInfo)
+	}
+	if skipPrefill {
+		return queryInfo, nil, runCleanup(nil)
+	}
+
+	prefill := func() error {
+		log.Println("Hashing targets")
+		if err := queryInfo.PrefillCache(); err != nil {
+			return fmt.Errorf("failed to calculate hashes at %s: %w", rev, err)
+		}
+
+		// Save to cache if caching is enabled
+		if cacheEnabled {
+			if saveErr := SaveToCache(context, treeSha, targets.String(), queryInfo); saveErr != nil {
+				log.Printf("Warning: failed to save to cache: %v", saveErr)
+			}
+		}
+		return nil
+	}
+
+	if !asyncPrefill {
+		if err := prefill(); err != nil {
+			return nil, nil, runCleanup(err)
+		}
+		return queryInfo, nil, runCleanup(nil)
+	}
+
+	prefillDone := make(chan error, 1)
+	go func() {
+		prefillDone <- prefill()
+	}()
+
+	completePrefill = func() error {
+		return runCleanup(<-prefillDone)
+	}
+
+	return queryInfo, completePrefill, nil
+}
+
+func prepareAsyncPrefill(context *Context, rev LabelledGitRev, queryInfo *QueryResults, loadMetadataCleanup func()) (func(), error) {
+	cleanupAfterHash := loadMetadataCleanup
+	restoreWorkspace := true
+
+	if queryInfo.TargetHashCache.WorkspacePath() == context.WorkspacePath {
+		sourceFileRoot, err := gitReuseOrCreateWorktree(context, rev)
+		if err != nil {
+			loadMetadataCleanup()
+			if checkoutErr := gitCheckout(context.WorkspacePath, context.OriginalRevision); checkoutErr != nil {
+				return nil, fmt.Errorf("failed to create stable source file root for %s: %w; also failed to check out original commit during cleanup: %v", rev, err, checkoutErr)
+			}
+			return nil, fmt.Errorf("failed to create stable source file root for %s: %w", rev, err)
+		}
+		if _, err := updateSubmodules(sourceFileRoot, rev, sourceFileRoot); err != nil {
+			loadMetadataCleanup()
+			if checkoutErr := gitCheckout(context.WorkspacePath, context.OriginalRevision); checkoutErr != nil {
+				return nil, fmt.Errorf("failed to update stable source file root for %s: %w; also failed to check out original commit during cleanup: %v", rev, err, checkoutErr)
+			}
+			return nil, fmt.Errorf("failed to update stable source file root for %s: %w", rev, err)
+		}
+
+		queryInfo.TargetHashCache.UseSourceFileRoot(sourceFileRoot)
+		if context.DeleteCachedWorktree {
+			cleanupAfterHash = func() {
+				loadMetadataCleanup()
+				if err := os.RemoveAll(sourceFileRoot); err != nil {
+					log.Printf("failed to clean up source file worktree at %s: %v", sourceFileRoot, err)
+				}
+			}
+		}
+	} else {
+		restoreWorkspace = false
+	}
+
+	if restoreWorkspace {
+		if checkoutErr := gitCheckout(context.WorkspacePath, context.OriginalRevision); checkoutErr != nil {
+			cleanupAfterHash()
+			return nil, fmt.Errorf("failed to check out original commit before asynchronous hashing: %w", checkoutErr)
 		}
 	}
-
-	return queryInfo, nil
+	return cleanupAfterHash, nil
 }
 
 // LoadIncompleteMetadata loads the metadata about, but not hashes of, targets into a QueryResults.
@@ -388,6 +535,124 @@ func GitTreeSHA(context *Context, gitRev string) (string, error) {
 	return strings.TrimSpace(stdoutBuf.String()), nil
 }
 
+func GitChangedPaths(context *Context, revBefore LabelledGitRev, revAfter LabelledGitRev) (*ChangedPathSet, error) {
+	if revBefore.GitRevision.Sha == "" {
+		return nil, fmt.Errorf("before revision must resolve to a git SHA")
+	}
+
+	afterRev := revAfter.GitRevision.Sha
+	if revAfter.GitRevision == CurrentWorkingCopyState {
+		isClean, err := EnsureGitRepositoryClean(context.WorkspacePath, context.IgnoredFiles)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check whether current working copy is clean: %w", err)
+		}
+		if !isClean {
+			return nil, fmt.Errorf("current working copy is dirty")
+		}
+		afterRev = context.OriginalRevision.GitRevision.Sha
+	}
+	if afterRev == "" {
+		return nil, fmt.Errorf("after revision must resolve to a git SHA")
+	}
+
+	changedPaths, err := runToLines(context.WorkspacePath, "git", "diff", "--name-only", "--no-renames", revBefore.GitRevision.Sha, afterRev)
+	if err != nil {
+		return nil, err
+	}
+	return NewChangedPathSet(changedPaths), nil
+}
+
+func metadataAndSourceChangesProveNoAffectedTargets(before, after *QueryResults, changedPaths *ChangedPathSet) bool {
+	if before == nil || after == nil || changedPaths == nil {
+		log.Printf("Hash prefill fast path disabled: missing query results or changed paths")
+		return false
+	}
+	if before.QueryError != nil || after.QueryError != nil {
+		log.Printf("Hash prefill fast path disabled: query error present")
+		return false
+	}
+	if before.BazelRelease != after.BazelRelease {
+		log.Printf("Hash prefill fast path disabled: Bazel release differs")
+		return false
+	}
+	if changedPaths.ContainsBuildMetadataPath() {
+		log.Printf("Hash prefill fast path disabled: build metadata path changed")
+		return false
+	}
+	if !matchingTargetsEqual(before.MatchingTargets, after.MatchingTargets) {
+		log.Printf("Hash prefill fast path disabled: matching targets differ")
+		return false
+	}
+	equalMetadata, err := semanticMetadataEqual(before, after)
+	if err != nil {
+		log.Printf("Hash prefill fast path disabled: failed to compare semantic cquery metadata: %v", err)
+		return false
+	}
+	if !equalMetadata {
+		log.Printf("Hash prefill fast path disabled: semantic cquery metadata differs")
+		return false
+	}
+	if changedPathsIntersectSourceFiles(after, changedPaths) {
+		log.Printf("Hash prefill fast path disabled: changed files intersect transitive source graph")
+		return false
+	}
+	return true
+}
+
+func semanticMetadataEqual(before, after *QueryResults) (bool, error) {
+	beforeFingerprints, err := before.TargetHashCache.ExtractMetadataFingerprints()
+	if err != nil {
+		return false, fmt.Errorf("failed to extract before metadata fingerprints: %w", err)
+	}
+	afterFingerprints, err := after.TargetHashCache.ExtractMetadataFingerprints()
+	if err != nil {
+		return false, fmt.Errorf("failed to extract after metadata fingerprints: %w", err)
+	}
+	if len(beforeFingerprints) != len(afterFingerprints) {
+		return false, nil
+	}
+	for key, beforeFingerprint := range beforeFingerprints {
+		afterFingerprint, ok := afterFingerprints[key]
+		if !ok {
+			return false, nil
+		}
+		if !bytes.Equal(beforeFingerprint, afterFingerprint) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func matchingTargetsEqual(before, after *MatchingTargets) bool {
+	beforeLabels := before.Labels()
+	afterLabels := after.Labels()
+	if !reflect.DeepEqual(beforeLabels, afterLabels) {
+		return false
+	}
+	for _, l := range beforeLabels {
+		if !reflect.DeepEqual(before.ConfigurationsFor(l), after.ConfigurationsFor(l)) {
+			return false
+		}
+	}
+	return true
+}
+
+func changedPathsIntersectSourceFiles(queryInfo *QueryResults, changedPaths *ChangedPathSet) bool {
+	for _, configuredTargetsByConfig := range queryInfo.TransitiveConfiguredTargets {
+		for _, configuredTarget := range configuredTargetsByConfig {
+			target := configuredTarget.GetTarget()
+			if target.GetType() != build.Target_SOURCE_FILE {
+				continue
+			}
+			relPath, ok := queryInfo.TargetHashCache.sourceFileRelPath(AbsolutePath(target))
+			if ok && changedPaths.Contains(relPath) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 type GitFileStatus struct {
 	// Status contains the shorthand notation of the status of the file. See `man git-status` for a mapping.
 	Status string
@@ -444,7 +709,7 @@ func gitStatus(workingDirectory string) ([]GitFileStatus, error) {
 //
 // When applicable, the caller is responsible for cleaning up the newly created worktree.
 func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common.RelPath) (string, error) {
-	useGitWorktree := false
+	originalWorkspacePath := context.WorkspacePath
 	isPreCheckoutClean, err := EnsureGitRepositoryClean(context.WorkspacePath, ignoredFiles)
 	if err != nil {
 		return "", fmt.Errorf("failed to check whether the repository is clean: %w", err)
@@ -456,37 +721,49 @@ func gitSafeCheckout(context *Context, rev LabelledGitRev, ignoredFiles []common
 
 		log.Printf("Workspace is unclean, using git worktree. This will be slower the first time. " +
 			"You can avoid this by committing local changes and ignoring untracked files.")
-		useGitWorktree = true
-	} else {
-		if err := gitCheckout(context.WorkspacePath, rev); err != nil {
-			return "", err
-		}
-
-		isPostCheckoutClean, err := EnsureGitRepositoryClean(context.WorkspacePath, ignoredFiles)
-		if err != nil {
-			return "", fmt.Errorf("failed to check whether the repository is clean: %w", err)
-		}
-		if !isPostCheckoutClean {
-			if context.EnforceCleanRepo {
-				return "", fmt.Errorf("repository was not clean after checking out %v", rev)
-			}
-
-			log.Printf("Detected unclean repository after checkout (likely due to submodule or " +
-				".gitignore changes). Using git worktree to leave original repository pristine.")
-			useGitWorktree = true
-		}
-	}
-	newRepositoryPath := ""
-	if useGitWorktree {
-		newRepositoryPath, err = gitReuseOrCreateWorktree(context, rev)
-		if err != nil {
-			return "", fmt.Errorf("failed to create or reuse worktree: %w", err)
-		}
-		context.WorkspacePath = newRepositoryPath
+		return checkoutWorktree(context, rev)
 	}
 
+	if err := gitCheckout(context.WorkspacePath, rev); err != nil {
+		return "", err
+	}
+
+	isPostCheckoutClean, err := EnsureGitRepositoryClean(context.WorkspacePath, ignoredFiles)
+	if err != nil {
+		return "", fmt.Errorf("failed to check whether the repository is clean: %w", err)
+	}
+	if !isPostCheckoutClean {
+		if context.EnforceCleanRepo {
+			return "", fmt.Errorf("repository was not clean after checking out %v", rev)
+		}
+
+		log.Printf("Detected unclean repository after checkout (likely due to submodule or " +
+			".gitignore changes). Using git worktree to leave original repository pristine.")
+		newWorkspacePath, err := checkoutWorktree(context, rev)
+		if err != nil {
+			return newWorkspacePath, err
+		}
+		if err := gitCheckout(originalWorkspacePath, context.OriginalRevision); err != nil {
+			return newWorkspacePath, fmt.Errorf("failed to restore original repository after creating worktree for %v: %w", rev, err)
+		}
+		return newWorkspacePath, nil
+	}
+
+	return updateSubmodules(context.WorkspacePath, rev, "")
+}
+
+func checkoutWorktree(context *Context, rev LabelledGitRev) (string, error) {
+	newRepositoryPath, err := gitReuseOrCreateWorktree(context, rev)
+	if err != nil {
+		return "", fmt.Errorf("failed to create or reuse worktree: %w", err)
+	}
+	context.WorkspacePath = newRepositoryPath
+	return updateSubmodules(context.WorkspacePath, rev, newRepositoryPath)
+}
+
+func updateSubmodules(workingDirectory string, rev LabelledGitRev, newRepositoryPath string) (string, error) {
 	gitCmd := exec.Command("git", "submodule", "update", "--init", "--recursive")
-	gitCmd.Dir = context.WorkspacePath
+	gitCmd.Dir = workingDirectory
 	if output, err := gitCmd.CombinedOutput(); err != nil {
 		return newRepositoryPath, fmt.Errorf("failed to update submodules during checkout %s: %w. Output: %v", rev, err, string(output))
 	}
@@ -584,6 +861,7 @@ type QueryResults struct {
 	TransitiveConfiguredTargets map[label.Label]map[Configuration]*analysis.ConfiguredTarget
 	TargetHashCache             *TargetHashCache
 	BazelRelease                string
+	NoAffectedTargets           bool
 	// QueryError is whatever error was returned when running the cquery to get these results.
 	QueryError     error
 	configurations map[Configuration]singleConfigurationOutput
@@ -790,7 +1068,7 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 	if len(incompatibleTargetsToFilter) > 0 {
 		depsPattern += " - " + strings.Join(sortedStringKeys(incompatibleTargetsToFilter), " - ")
 	}
-	transitiveResult, err := runToCqueryResult(context, depsPattern, true, bazelRelease)
+	transitiveOutput, err := runToCqueryOutput(context, depsPattern, true, bazelRelease)
 	if err != nil {
 		retErr := fmt.Errorf("failed to cquery %v: %w", depsPattern, err)
 		return &QueryResults{
@@ -799,28 +1077,57 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 				labelsToConfigurations: nil,
 			},
 			TransitiveConfiguredTargets: nil,
-			TargetHashCache:             NewTargetHashCache(nil, &normalizer, bazelRelease),
+			TargetHashCache:             targetHashCache(nil, &normalizer, bazelRelease, context),
 			BazelRelease:                bazelRelease,
 			QueryError:                  retErr,
 		}, retErr
 	}
 
-	transitiveConfiguredTargets, err := ParseCqueryResult(transitiveResult, &normalizer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse cquery result: %w", err)
-	}
+	transitiveResultDone := make(chan transitiveResult, 1)
+	go func() {
+		transitiveConfiguredTargets, err := parseTransitiveCqueryResult(transitiveOutput, &normalizer)
+		transitiveResultDone <- transitiveResult{configuredTargets: transitiveConfiguredTargets, err: err}
+	}()
 
 	matchingTargetResults, err := runToCqueryResult(context, targets.String(), false, bazelRelease)
 	if err != nil {
+		transitiveResult := <-transitiveResultDone
+		if transitiveResult.err != nil {
+			return nil, fmt.Errorf("failed to run top-level cquery: %w; also failed to parse transitive cquery result: %v", err, transitiveResult.err)
+		}
 		return nil, fmt.Errorf("failed to run top-level cquery: %w", err)
 	}
 
 	var compatibleTargets map[label.Label]bool
 	if context.FilterIncompatibleTargets {
 		if compatibleTargets, err = findCompatibleTargets(context, targets.String(), true, &normalizer, bazelRelease); err != nil {
+			transitiveResult := <-transitiveResultDone
+			if transitiveResult.err != nil {
+				return nil, fmt.Errorf("failed to find compatible targets: %w; also failed to parse transitive cquery result: %v", err, transitiveResult.err)
+			}
 			return nil, fmt.Errorf("failed to find compatible targets: %w", err)
 		}
 	}
+
+	transitiveResult := <-transitiveResultDone
+	if transitiveResult.err != nil {
+		return nil, fmt.Errorf("failed to parse cquery result: %w", transitiveResult.err)
+	}
+	transitiveConfiguredTargets := transitiveResult.configuredTargets
+
+	configurations, err := getConfigurationDetails(context)
+	if err != nil {
+		return nil, fmt.Errorf("failed to interpret configurations output: %w", err)
+	}
+	configurationMap, configurations, err := normalizeConfigurationDetails(context, configurations)
+	if err != nil {
+		return nil, fmt.Errorf("failed to normalize configurations: %w", err)
+	}
+	transitiveConfiguredTargets, err = normalizeConfiguredTargets(transitiveConfiguredTargets, configurationMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to normalize transitive cquery configurations: %w", err)
+	}
+
 	// Need to do this due to a change in bazel-gazelle & how equality between labels is determined.
 	// Likely happened in https://github.com/bazel-contrib/bazel-gazelle/pull/1911.
 	var compatibleTargetsStrKey = make(map[string]bool, len(compatibleTargets))
@@ -841,7 +1148,10 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		}
 		labels = append(labels, l)
 
-		configuration := NormalizeConfiguration(mt.Configuration.Checksum)
+		configuration, err := remapConfiguration(NormalizeConfiguration(mt.Configuration.Checksum), configurationMap)
+		if err != nil {
+			return nil, fmt.Errorf("failed to normalize matching target configuration for %s: %w", l, err)
+		}
 		labelsToConfigurations[l] = append(labelsToConfigurations[l], configuration)
 	}
 
@@ -855,20 +1165,84 @@ func doQueryDeps(context *Context, targets TargetsList) (*QueryResults, error) {
 		labelsToConfigurations: processedLabelsToConfigurations,
 	}
 
-	configurations, err := getConfigurationDetails(context)
-	if err != nil {
-		return nil, fmt.Errorf("failed to interpret configurations output: %w", err)
-	}
-
 	queryResults := &QueryResults{
 		MatchingTargets:             matchingTargets,
 		TransitiveConfiguredTargets: transitiveConfiguredTargets,
-		TargetHashCache:             NewTargetHashCache(transitiveConfiguredTargets, &normalizer, bazelRelease),
+		TargetHashCache:             targetHashCache(transitiveConfiguredTargets, &normalizer, bazelRelease, context),
 		BazelRelease:                bazelRelease,
 		QueryError:                  nil,
 		configurations:              configurations,
 	}
 	return queryResults, nil
+}
+
+func targetHashCache(
+	configuredTargets map[label.Label]map[Configuration]*analysis.ConfiguredTarget,
+	normalizer *Normalizer,
+	bazelRelease string,
+	context *Context,
+) *TargetHashCache {
+	cache := NewTargetHashCache(configuredTargets, normalizer, bazelRelease)
+	cache.SetWorkspacePath(context.WorkspacePath)
+	cache.SetRootPathReplacements(rootPathReplacements(context))
+	return cache
+}
+
+func normalizeConfiguredTargets(configuredTargets map[label.Label]map[Configuration]*analysis.ConfiguredTarget, configurationMap map[Configuration]Configuration) (map[label.Label]map[Configuration]*analysis.ConfiguredTarget, error) {
+	normalized := make(map[label.Label]map[Configuration]*analysis.ConfiguredTarget, len(configuredTargets))
+	for l, configuredTargetsByConfig := range configuredTargets {
+		normalized[l] = make(map[Configuration]*analysis.ConfiguredTarget, len(configuredTargetsByConfig))
+		for oldConfiguration, configuredTarget := range configuredTargetsByConfig {
+			newConfiguration, err := remapConfiguration(oldConfiguration, configurationMap)
+			if err != nil {
+				return nil, fmt.Errorf("failed to remap configuration for %s: %w", l, err)
+			}
+			if err := normalizeConfiguredTargetConfiguration(configuredTarget, configurationMap); err != nil {
+				return nil, fmt.Errorf("failed to normalize configured target %s: %w", l, err)
+			}
+
+			if existing := normalized[l][newConfiguration]; existing != nil && !proto.Equal(existing, configuredTarget) {
+				return nil, fmt.Errorf("configuration normalization collision for %s in configuration %s", l, newConfiguration)
+			}
+			normalized[l][newConfiguration] = configuredTarget
+		}
+	}
+	return normalized, nil
+}
+
+func normalizeConfiguredTargetConfiguration(configuredTarget *analysis.ConfiguredTarget, configurationMap map[Configuration]Configuration) error {
+	if configuredTarget.GetConfiguration() != nil {
+		configuration, err := remapConfiguration(NormalizeConfiguration(configuredTarget.GetConfiguration().GetChecksum()), configurationMap)
+		if err != nil {
+			return err
+		}
+		configuredTarget.GetConfiguration().Checksum = configuration.String()
+	}
+
+	rule := configuredTarget.GetTarget().GetRule()
+	if rule == nil {
+		return nil
+	}
+	for _, configuredRuleInput := range rule.GetConfiguredRuleInput() {
+		configuration, err := remapConfiguration(NormalizeConfiguration(configuredRuleInput.GetConfigurationChecksum()), configurationMap)
+		if err != nil {
+			return err
+		}
+		configurationChecksum := configuration.String()
+		configuredRuleInput.ConfigurationChecksum = &configurationChecksum
+	}
+	return nil
+}
+
+func remapConfiguration(configuration Configuration, configurationMap map[Configuration]Configuration) (Configuration, error) {
+	if configuration.String() == "" {
+		return configuration, nil
+	}
+	newConfiguration, ok := configurationMap[configuration]
+	if !ok {
+		return Configuration{}, fmt.Errorf("configuration %s not found in normalized configuration map", configuration)
+	}
+	return newConfiguration, nil
 }
 
 func sortedStringKeys[V any](m map[label.Label]V) []string {
@@ -880,7 +1254,25 @@ func sortedStringKeys[V any](m map[label.Label]V) []string {
 	return keys
 }
 
+type cqueryOutput struct {
+	stdout           []byte
+	useStreamedProto bool
+}
+
+type transitiveResult struct {
+	configuredTargets map[label.Label]map[Configuration]*analysis.ConfiguredTarget
+	err               error
+}
+
 func runToCqueryResult(context *Context, pattern string, includeTransitions bool, bazelRelease string) ([]*analysis.ConfiguredTarget, error) {
+	output, err := runToCqueryOutput(context, pattern, includeTransitions, bazelRelease)
+	if err != nil {
+		return nil, err
+	}
+	return parseCqueryOutput(output)
+}
+
+func runToCqueryOutput(context *Context, pattern string, includeTransitions bool, bazelRelease string) (cqueryOutput, error) {
 	log.Printf("Running cquery on %s", pattern)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -905,15 +1297,31 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 		args...)
 
 	if returnVal != 0 || err != nil {
-		return nil, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+		return cqueryOutput{}, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
 	}
 
-	if useStreamedProto {
+	return cqueryOutput{
+		stdout:           stdout.Bytes(),
+		useStreamedProto: useStreamedProto,
+	}, nil
+}
+
+func parseTransitiveCqueryResult(output cqueryOutput, normalizer *Normalizer) (map[label.Label]map[Configuration]*analysis.ConfiguredTarget, error) {
+	targets, err := parseCqueryOutput(output)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCqueryResult(targets, normalizer)
+}
+
+func parseCqueryOutput(output cqueryOutput) ([]*analysis.ConfiguredTarget, error) {
+	if output.useStreamedProto {
 		var targets []*analysis.ConfiguredTarget
 		unmarshalOpts := protodelim.UnmarshalOptions{MaxSize: -1}
+		stdout := bytes.NewReader(output.stdout)
 		for {
 			var singleTargetResult analysis.CqueryResult
-			if err = unmarshalOpts.UnmarshalFrom(&stdout, &singleTargetResult); err == io.EOF {
+			if err := unmarshalOpts.UnmarshalFrom(stdout, &singleTargetResult); err == io.EOF {
 				break
 			} else if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal streamed cquery stdout: %w", err)
@@ -923,7 +1331,7 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 		return targets, nil
 	} else {
 		var result analysis.CqueryResult
-		if err = proto.Unmarshal(stdout.Bytes(), &result); err != nil {
+		if err := proto.Unmarshal(output.stdout, &result); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal cquery stdout: %w", err)
 		}
 		return result.GetResults(), nil

@@ -23,12 +23,35 @@ public class TargetDeterminator {
   /** Get the targets returned by a run of target-determinator. */
   public static Set<Label> getTargets(Path workspace, String... argv)
       throws TargetComputationErrorException {
-    return parseLabels(getOutput(workspace, TARGET_DETERMINATOR, argv));
+    return parseLabels(getResult(workspace, TARGET_DETERMINATOR, argv).stdout());
   }
 
   /** Get the stdout returned by a run of target-determinator. */
   public static String getOutput(Path workingDirectory, String... argv) throws TargetComputationErrorException {
-    return getOutput(workingDirectory, TARGET_DETERMINATOR, argv);
+    return getResult(workingDirectory, TARGET_DETERMINATOR, argv).stdout();
+  }
+
+  /** Get the stdout and stderr returned by a run of target-determinator. */
+  public static Result getResult(Path workingDirectory, String... argv) throws TargetComputationErrorException {
+    return getResult(workingDirectory, TARGET_DETERMINATOR, argv);
+  }
+
+  public static class Result {
+    private final String stdout;
+    private final String stderr;
+
+    private Result(String stdout, String stderr) {
+      this.stdout = stdout;
+      this.stderr = stderr;
+    }
+
+    public String stdout() {
+      return stdout;
+    }
+
+    public String stderr() {
+      return stderr;
+    }
   }
 
   public static Set<Label> parseLabels(String output) {
@@ -47,7 +70,7 @@ public class TargetDeterminator {
     return cacheDir.resolve(String.format("td-worktree-%s-%s", workingDirectory.getFileName(), workingDirHash));
   }
 
-  private static String getOutput(Path workingDirectory, String argv0, String... argv)
+  private static Result getResult(Path workingDirectory, String argv0, String... argv)
       throws TargetComputationErrorException {
     ProcessBuilder processBuilder = new ProcessBuilder(argv0);
     for (String arg : argv) {
@@ -73,7 +96,7 @@ public class TargetDeterminator {
             output,
             stderr);
       }
-      return output;
+      return new Result(output, stderr);
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);
     }
