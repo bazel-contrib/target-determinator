@@ -1,0 +1,111 @@
+name: 'Target Determinator'
+description: 'Determines which Bazel targets are affected between two git revisions, using pre-built target-determinator release binaries.'
+author: 'bazel-contrib'
+
+inputs:
+  before-revision:
+    description: 'Git revision to diff against. Defaults to the pull request base SHA, or the previous commit on push.'
+    required: false
+    default: ''
+  targets:
+    description: 'Bazel query expression scoping which targets to consider.'
+    required: false
+    default: '//...'
+  working-directory:
+    description: 'Working directory containing the Bazel workspace to query.'
+    required: false
+    default: '.'
+  bazel:
+    description: 'Bazel binary (on PATH, or absolute/relative path) to run.'
+    required: false
+    default: 'bazel'
+  version:
+    description: 'target-determinator release version to use (e.g. v0.34.0). Defaults to the latest release.'
+    required: false
+    default: 'latest'
+
+outputs:
+  affected-targets:
+    description: 'Newline-separated list of affected Bazel target labels.'
+    value: ${{ steps.run.outputs.affected-targets }}
+  count:
+    description: 'Number of affected targets.'
+    value: ${{ steps.run.outputs.count }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve before-revision
+      id: resolve-revision
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.before-revision }}" ]; then
+          echo "revision=${{ inputs.before-revision }}" >> "$GITHUB_OUTPUT"
+        elif [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+          echo "revision=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "revision=HEAD~1" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Resolve release version
+      id: resolve-version
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          version=$(gh release view --repo bazel-contrib/target-determinator --json tagName --jq .tagName)
+        else
+          version="${{ inputs.version }}"
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Download target-determinator binary
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+        arch="$(uname -m)"
+        case "$arch" in
+          x86_64) arch="amd64" ;;
+          arm64|aarch64) arch="arm64" ;;
+          *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
+        esac
+        asset="target-determinator.${os}.${arch}"
+        gh release download "${{ steps.resolve-version.outputs.version }}" \
+          --repo bazel-contrib/target-determinator \
+          --pattern "$asset" \
+          --output "$RUNNER_TEMP/target-determinator" \
+          --clobber
+        chmod +x "$RUNNER_TEMP/target-determinator"
+
+    - name: Run target-determinator
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        affected="$("$RUNNER_TEMP/target-determinator" \
+          -targets "${{ inputs.targets }}" \
+          -bazel "${{ inputs.bazel }}" \
+          -working-directory . \
+          "${{ steps.resolve-revision.outputs.revision }}")"
+
+        {
+          echo "affected-targets<<TD_EOF"
+          echo "$affected"
+          echo "TD_EOF"
+        } >> "$GITHUB_OUTPUT"
+
+        count=$(printf '%s\n' "$affected" | grep -c . || true)
+        echo "count=$count" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "## Target Determinator"
+          echo "**$count** target(s) affected since \`${{ steps.resolve-revision.outputs.revision }}\`"
+          echo '```'
+          printf '%s\n' "$affected"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
