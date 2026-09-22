@@ -1,6 +1,7 @@
 package pkg
 
 import (
+	"encoding/hex"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -168,6 +169,110 @@ func ComputeDirtySet(
 	}
 
 	return result
+}
+
+// PruneDirtySet narrows a DirtySetResult by re-propagating reverse
+// dependencies only from targets whose hashes actually changed. The caller
+// must supply probeHashes — a map from "label\x00configuration" to the hex
+// hash computed at the destination revision — for every target in the
+// directly dirty packages. Targets whose probe hash matches the seed are
+// excluded from rdeps propagation, dramatically reducing the dirty set when
+// a BUILD.bazel change doesn't affect most existing targets (e.g. adding a
+// new target to a high-fanout package).
+//
+// seedHashes is the TargetHashes map from the seed file (label → config → hex hash).
+// edges is the TargetEdges map from the seed file.
+// original is the DirtySetResult from ComputeDirtySet.
+// probeHashes maps "label\x00config" → hex hash for targets in dirty packages.
+//
+// PruneDirtySet preserves the original DirtyLabels and DirtyPackages
+// (packages still need re-listing via wildcards) but recomputes
+// DirtyStarLabels from scratch.
+func PruneDirtySet(
+	original *DirtySetResult,
+	seedHashes map[string]map[string]string,
+	edges map[string][]string,
+	probeHashes map[string]string,
+) *DirtySetResult {
+	// Identify directly dirty targets whose hash actually changed.
+	actuallyChanged := make(map[string]bool)
+	for label := range original.DirtyLabels {
+		seedConfigs, inSeed := seedHashes[label]
+		if !inSeed {
+			// New target (not in seed) — always counts as changed.
+			actuallyChanged[label] = true
+			continue
+		}
+		matched := true
+		for config, seedHex := range seedConfigs {
+			probeKey := label + "\x00" + config
+			probeHex, ok := probeHashes[probeKey]
+			if !ok {
+				// Target was in seed but not in probe results — may have been
+				// removed or filtered. Treat as changed to be safe.
+				matched = false
+				break
+			}
+			if probeHex != seedHex {
+				matched = false
+				break
+			}
+		}
+		if !matched {
+			actuallyChanged[label] = true
+		}
+	}
+
+	// Re-propagate rdeps only from actually changed targets.
+	rdeps := BuildRdeps(edges)
+	newDirtyStar := make(map[string]bool, len(actuallyChanged))
+	queue := make([]string, 0, len(actuallyChanged))
+
+	// Seed the queue with all directly dirty labels (they still need
+	// re-listing even if their hash didn't change), but only propagate
+	// rdeps from labels that actually changed.
+	for label := range original.DirtyLabels {
+		newDirtyStar[label] = true
+	}
+	for label := range actuallyChanged {
+		queue = append(queue, label)
+	}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, rdep := range rdeps[current] {
+			if !newDirtyStar[rdep] {
+				newDirtyStar[rdep] = true
+				queue = append(queue, rdep)
+			}
+		}
+	}
+
+	return &DirtySetResult{
+		DirtyLabels:     original.DirtyLabels,
+		DirtyStarLabels: newDirtyStar,
+		DirtyPackages:   original.DirtyPackages,
+	}
+}
+
+// ProbeHashesFromQueryResults extracts hex-encoded hashes for all matching
+// targets in a QueryResults, keyed as "label\x00configuration". This is
+// used by the probe phase to compare against seed hashes.
+func ProbeHashesFromQueryResults(queryResults *QueryResults) (map[string]string, error) {
+	hashes := make(map[string]string)
+	for _, label := range queryResults.MatchingTargets.Labels() {
+		for _, cfg := range queryResults.MatchingTargets.ConfigurationsFor(label) {
+			hash, err := queryResults.TargetHashCache.Hash(LabelAndConfiguration{
+				Label: label, Configuration: cfg,
+			})
+			if err != nil {
+				return nil, err
+			}
+			hashes[label.String()+"\x00"+cfg.String()] = hex.EncodeToString(hash)
+		}
+	}
+	return hashes, nil
 }
 
 func isFallbackTrigger(basename string) bool {
