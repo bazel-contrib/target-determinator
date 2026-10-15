@@ -55,3 +55,48 @@ func TestDiffSingleLabel_NoDifferenceWhenBothFromCache(t *testing.T) {
 		t.Fatalf("DiffSingleLabel returned unexpected error: %v", err)
 	}
 }
+
+func TestDiffSingleLabel_AddedConfiguration(t *testing.T) {
+	lbl := mustParseLabel("//foo:bar")
+	target, exec := NormalizeConfiguration("aaaa"), NormalizeConfiguration("bbbb")
+	same, changed := []byte{1}, []byte{2}
+
+	fromCache := func(hashes map[Configuration][]byte) *QueryResults {
+		var configurations []Configuration
+		restored := map[string][]byte{}
+		for configuration, hash := range hashes {
+			configurations = append(configurations, configuration)
+			restored[lbl.String()+"\x00"+configuration.String()] = hash
+		}
+		thc := NewTargetHashCache(nil, &Normalizer{}, "release 7.0.0")
+		if err := thc.RestoreHashes(restored); err != nil {
+			t.Fatalf("RestoreHashes: %v", err)
+		}
+		return &QueryResults{
+			MatchingTargets: &MatchingTargets{
+				labels:                 ss.NewSortedSetFn([]gazelle_label.Label{lbl}, CompareLabels),
+				labelsToConfigurations: map[gazelle_label.Label]*ss.SortedSet[Configuration]{lbl: ss.NewSortedSetFn(configurations, ConfigurationLess)},
+			},
+			TargetHashCache: thc,
+			BazelRelease:    "release 7.0.0",
+		}
+	}
+
+	for name, tc := range map[string]struct {
+		before, after map[Configuration][]byte
+		want          bool
+	}{
+		"added configuration of an unchanged target": {map[Configuration][]byte{target: same}, map[Configuration][]byte{target: same, exec: same}, false},
+		"added configuration of a changed target":    {map[Configuration][]byte{target: same}, map[Configuration][]byte{target: changed, exec: same}, true},
+		"replaced configuration":                     {map[Configuration][]byte{target: same}, map[Configuration][]byte{exec: same}, true},
+	} {
+		affected := false
+		if err := DiffSingleLabel(fromCache(tc.before), fromCache(tc.after), false, lbl,
+			func(gazelle_label.Label, []Difference, *analysis.ConfiguredTarget) { affected = true }); err != nil {
+			t.Fatalf("%s: DiffSingleLabel: %v", name, err)
+		}
+		if affected != tc.want {
+			t.Errorf("%s: affected = %v, want %v", name, affected, tc.want)
+		}
+	}
+}
