@@ -20,8 +20,9 @@ func (n *Normalizer) ParseCanonicalLabel(s string) (label.Label, error) {
 	}
 
 	if !l.Canonical && l.Repo != "" {
+		// Also when both names are equal (e.g. @platforms), so the label matches its @@ form.
 		mappedValue, ok := n.Mapping[l.Repo]
-		if ok && l.Repo != mappedValue {
+		if ok {
 			l.Repo = mappedValue
 			l.Canonical = true
 		}
