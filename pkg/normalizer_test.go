@@ -34,6 +34,47 @@ func TestParseCanonicalLabel(t *testing.T) {
 	}
 }
 
+func TestParseCanonicalLabelSameApparentAndCanonicalName(t *testing.T) {
+	n := Normalizer{
+		Mapping: map[string]string{
+			"platforms": "platforms",
+		},
+	}
+
+	apparent, err := n.ParseCanonicalLabel("@platforms//os:linux")
+	if err != nil {
+		t.Fatalf("Error parsing label: %v", err)
+	}
+	canonical, err := n.ParseCanonicalLabel("@@platforms//os:linux")
+	if err != nil {
+		t.Fatalf("Error parsing label: %v", err)
+	}
+
+	if apparent != canonical {
+		t.Fatalf("Expected %v and %v to be equal", apparent, canonical)
+	}
+	if apparent.String() != "@@platforms//os:linux" {
+		t.Fatalf("Expected label to be @@platforms//os:linux, got %v", apparent.String())
+	}
+}
+
+func TestParseCanonicalLabelMainRepo(t *testing.T) {
+	n := Normalizer{
+		Mapping: map[string]string{
+			"my_module": "",
+		},
+	}
+
+	label, err := n.ParseCanonicalLabel("@my_module//pkg:target")
+	if err != nil {
+		t.Fatalf("Error parsing label: %v", err)
+	}
+
+	if label.String() != "//pkg:target" {
+		t.Fatalf("Expected label to be //pkg:target, got %v", label.String())
+	}
+}
+
 func toPtr[T any](x T) *T {
 	return &x
 }
