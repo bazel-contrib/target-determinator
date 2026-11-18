@@ -162,7 +162,6 @@ func ValidateCommonFlags(commandName string, flags *CommonFlags) (targetPattern 
 }
 
 func ResolveCommonConfig(commonFlags *CommonFlags, beforeRevStr string) (*CommonConfig, error) {
-
 	// Context attributes
 
 	workingDirectory, err := filepath.Abs(*commonFlags.WorkingDirectory)

@@ -36,6 +36,10 @@ func WalkAffectedTargets(context *Context, revBefore LabelledGitRev, targets Tar
 		log.Printf("WARN: Bazel was detected to be a development version - if you're using different development versions at the before and after commits, differences between those versions may not be reflected in this output")
 	}
 
+	if afterMetadata.NoAffectedTargets {
+		return nil
+	}
+
 	for _, l := range afterMetadata.MatchingTargets.Labels() {
 		if err := DiffSingleLabel(beforeMetadata, afterMetadata, includeDifferences, l, callback); err != nil {
 			return err

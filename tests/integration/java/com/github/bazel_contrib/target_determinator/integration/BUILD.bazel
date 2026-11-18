@@ -46,6 +46,30 @@ java_test(
     ],
 )
 
+java_test(
+    name = "TargetDeterminatorOptimizationIntegrationTest",
+    srcs = [
+        "TargetDeterminatorOptimizationIntegrationTest.java",
+    ],
+    data = ["//target-determinator"],
+    env_inherit = ["CC"],
+    jvm_flags = [
+        "-Dtarget_determinator=$(rootpath //target-determinator)",
+    ],
+    tags = [
+        "manual",
+        "no-sandbox",
+    ],
+    deps = [
+        ":tests",
+        ":util",
+        "//tests/integration/java/com/github/bazel_contrib/target_determinator/label",
+        artifact("junit:junit"),
+        artifact("org.eclipse.jgit:org.eclipse.jgit"),
+        artifact("org.hamcrest:hamcrest-all"),
+    ],
+)
+
 java_library(
     name = "tests",
     srcs = [

@@ -41,6 +41,7 @@ func NewTargetHashCache(
 		bazelRelease:                             bazelRelease,
 		bazelVersionSupportsConfiguredRuleInputs: bazelVersionSupportsConfiguredRuleInputs,
 		cache:                                    make(map[gazelle_label.Label]map[Configuration]*cacheEntry),
+		metadataFingerprints:                     make(map[string][]byte),
 		frozen:                                   false,
 	}
 }
@@ -65,6 +66,11 @@ func isConfiguredRuleInputsSupported(releaseString string) bool {
 type TargetHashCache struct {
 	context                                  map[gazelle_label.Label]map[Configuration]*analysis.ConfiguredTarget
 	fileHashCache                            *fileHashCache
+	workspacePath                            string
+	sourceFileRoot                           string
+	rootPathReplacements                     []rootPathReplacement
+	reusableSourceFileHashes                 *TargetHashCache
+	changedSourceFiles                       *ChangedPathSet
 	bazelRelease                             string
 	bazelVersionSupportsConfiguredRuleInputs bool
 
@@ -72,8 +78,138 @@ type TargetHashCache struct {
 
 	frozen bool
 
-	cacheLock sync.Mutex
-	cache     map[gazelle_label.Label]map[Configuration]*cacheEntry
+	cacheLock               sync.Mutex
+	cache                   map[gazelle_label.Label]map[Configuration]*cacheEntry
+	metadataFingerprintLock sync.Mutex
+	metadataFingerprints    map[string][]byte
+}
+
+func (thc *TargetHashCache) SetWorkspacePath(workspacePath string) {
+	thc.workspacePath = workspacePath
+	thc.sourceFileRoot = workspacePath
+}
+
+func (thc *TargetHashCache) WorkspacePath() string {
+	return thc.workspacePath
+}
+
+func (thc *TargetHashCache) UseSourceFileRoot(sourceFileRoot string) {
+	thc.sourceFileRoot = sourceFileRoot
+}
+
+func (thc *TargetHashCache) SetRootPathReplacements(replacements []rootPathReplacement) {
+	thc.rootPathReplacements = replacements
+}
+
+func (thc *TargetHashCache) ReuseUnchangedSourceFileHashesFrom(source *TargetHashCache, changedSourceFiles *ChangedPathSet) {
+	thc.reusableSourceFileHashes = source
+	thc.changedSourceFiles = changedSourceFiles
+}
+
+func (thc *TargetHashCache) sourceFileRelPath(absolutePath string) (string, bool) {
+	if thc.workspacePath == "" || thc.sourceFileRoot == "" {
+		return "", false
+	}
+
+	relPath, err := filepath.Rel(thc.workspacePath, absolutePath)
+	if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) || filepath.IsAbs(relPath) {
+		return "", false
+	}
+	return relPath, true
+}
+
+func (thc *TargetHashCache) sourceFilePath(absolutePath string) string {
+	relPath, ok := thc.sourceFileRelPath(absolutePath)
+	if !ok {
+		return absolutePath
+	}
+	return filepath.Join(thc.sourceFileRoot, relPath)
+}
+
+func (thc *TargetHashCache) hashSourceFile(absolutePath string) ([]byte, error) {
+	if thc.reusableSourceFileHashes != nil {
+		if relPath, ok := thc.sourceFileRelPath(absolutePath); ok {
+			relPath = filepath.ToSlash(relPath)
+			if !thc.changedSourceFiles.Contains(relPath) {
+				hash, ok, err := thc.reusableSourceFileHashes.hashSourceFileByRelPath(relPath)
+				if err != nil {
+					return nil, err
+				}
+				if ok {
+					thc.fileHashCache.Store(relPath, hash)
+					return hash, nil
+				}
+			}
+		}
+	}
+	return thc.fileHashCache.Hash(thc.sourceFilePath(absolutePath))
+}
+
+func (thc *TargetHashCache) hashSourceFileByRelPath(relPath string) ([]byte, bool, error) {
+	relPath = filepath.ToSlash(relPath)
+	if hash, ok := thc.fileHashCache.Lookup(relPath); ok {
+		return hash, true, nil
+	}
+	if thc.sourceFileRoot == "" {
+		return nil, false, nil
+	}
+	hash, err := thc.fileHashCache.Hash(filepath.Join(thc.sourceFileRoot, filepath.FromSlash(relPath)))
+	if err != nil {
+		return nil, false, err
+	}
+	thc.fileHashCache.Store(relPath, hash)
+	return hash, true, nil
+}
+
+type ChangedPathSet struct {
+	paths map[string]struct{}
+}
+
+func NewChangedPathSet(paths []string) *ChangedPathSet {
+	changedPathSet := &ChangedPathSet{paths: make(map[string]struct{}, len(paths))}
+	for _, changedPath := range paths {
+		changedPath = filepath.ToSlash(changedPath)
+		if changedPath == "" || changedPath == "." {
+			continue
+		}
+		changedPathSet.paths[changedPath] = struct{}{}
+	}
+	return changedPathSet
+}
+
+func (s *ChangedPathSet) Contains(relPath string) bool {
+	if s == nil {
+		return true
+	}
+	relPath = filepath.ToSlash(relPath)
+	for {
+		if _, ok := s.paths[relPath]; ok {
+			return true
+		}
+
+		parent := filepath.ToSlash(filepath.Dir(relPath))
+		if parent == "." || parent == relPath {
+			return false
+		}
+		relPath = parent
+	}
+}
+
+func (s *ChangedPathSet) ContainsBuildMetadataPath() bool {
+	if s == nil {
+		return true
+	}
+	for changedPath := range s.paths {
+		base := filepath.Base(changedPath)
+		if base == "BUILD" || base == "BUILD.bazel" || strings.HasSuffix(base, ".bzl") {
+			return true
+		}
+		switch changedPath {
+		case "MODULE.bazel", "MODULE.bazel.lock", "WORKSPACE", "WORKSPACE.bazel", ".bazelrc":
+			return true
+		}
+	}
+	return false
 }
 
 var labelNotFound = fmt.Errorf("label not found in context")
@@ -145,6 +281,10 @@ func (thc *TargetHashCache) Freeze() {
 	thc.frozen = true
 }
 
+func labelAndConfigurationCacheKey(labelAndConfiguration LabelAndConfiguration) string {
+	return labelAndConfiguration.Label.String() + "\x00" + labelAndConfiguration.Configuration.String()
+}
+
 // ExtractHashes collects all pre-computed hashes from the cache.
 // Keys are formatted as "<label>\x00<configuration>".
 // Only entries with a computed hash are included.
@@ -158,12 +298,55 @@ func (thc *TargetHashCache) ExtractHashes() map[string][]byte {
 			if entry.hash != nil {
 				hashCopy := make([]byte, len(entry.hash))
 				copy(hashCopy, entry.hash)
-				result[lbl.String()+"\x00"+cfg.String()] = hashCopy
+				result[labelAndConfigurationCacheKey(LabelAndConfiguration{Label: lbl, Configuration: cfg})] = hashCopy
 			}
 			entry.hashLock.Unlock()
 		}
 	}
 	return result
+}
+
+// ExtractSourceFileHashes collects source file hashes keyed by workspace-relative path.
+func (thc *TargetHashCache) ExtractSourceFileHashes() map[string][]byte {
+	result := make(map[string][]byte)
+	for path, hash := range thc.fileHashCache.ExtractHashes() {
+		relPath, ok := thc.sourceFileHashRelPath(path)
+		if !ok {
+			continue
+		}
+		result[relPath] = hash
+	}
+	return result
+}
+
+func (thc *TargetHashCache) sourceFileHashRelPath(path string) (string, bool) {
+	if path == "" {
+		return "", false
+	}
+	if !filepath.IsAbs(path) {
+		cleaned := filepath.ToSlash(filepath.Clean(path))
+		if cleaned == "." || strings.HasPrefix(cleaned, "../") || filepath.IsAbs(cleaned) {
+			return "", false
+		}
+		return cleaned, true
+	}
+	for _, root := range []string{thc.sourceFileRoot, thc.workspacePath} {
+		if root == "" {
+			continue
+		}
+		relPath, err := filepath.Rel(root, path)
+		if err != nil || relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) || filepath.IsAbs(relPath) {
+			continue
+		}
+		return filepath.ToSlash(relPath), true
+	}
+	return "", false
+}
+
+func (thc *TargetHashCache) RestoreSourceFileHashes(hashes map[string][]byte) {
+	for relPath, hash := range hashes {
+		thc.fileHashCache.Store(filepath.ToSlash(relPath), hash)
+	}
 }
 
 // RestoreHashes populates the cache with pre-computed hashes and freezes the cache.
@@ -190,6 +373,61 @@ func (thc *TargetHashCache) RestoreHashes(hashes map[string][]byte) error {
 	}
 	thc.frozen = true
 	return nil
+}
+
+func (thc *TargetHashCache) ExtractMetadataFingerprints() (map[string][]byte, error) {
+	result := make(map[string][]byte)
+	if thc.context == nil {
+		thc.metadataFingerprintLock.Lock()
+		defer thc.metadataFingerprintLock.Unlock()
+		for key, fingerprint := range thc.metadataFingerprints {
+			result[key] = copyBytes(fingerprint)
+		}
+		return result, nil
+	}
+
+	labels := make([]gazelle_label.Label, 0, len(thc.context))
+	for lbl := range thc.context {
+		labels = append(labels, lbl)
+	}
+	sort.Slice(labels, func(i, j int) bool {
+		return CompareLabels(labels[i], labels[j])
+	})
+	for _, lbl := range labels {
+		configurations := make([]Configuration, 0, len(thc.context[lbl]))
+		for configuration := range thc.context[lbl] {
+			configurations = append(configurations, configuration)
+		}
+		sort.Slice(configurations, func(i, j int) bool {
+			return ConfigurationLess(configurations[i], configurations[j])
+		})
+		for _, configuration := range configurations {
+			labelAndConfiguration := LabelAndConfiguration{Label: lbl, Configuration: configuration}
+			fingerprint, err := thc.MetadataFingerprint(labelAndConfiguration)
+			if err != nil {
+				return nil, err
+			}
+			result[labelAndConfigurationCacheKey(labelAndConfiguration)] = fingerprint
+		}
+	}
+	return result, nil
+}
+
+func (thc *TargetHashCache) RestoreMetadataFingerprints(fingerprints map[string][]byte) {
+	thc.metadataFingerprintLock.Lock()
+	defer thc.metadataFingerprintLock.Unlock()
+	for key, fingerprint := range fingerprints {
+		thc.metadataFingerprints[key] = copyBytes(fingerprint)
+	}
+}
+
+func copyBytes(value []byte) []byte {
+	if value == nil {
+		return nil
+	}
+	copied := make([]byte, len(value))
+	copy(copied, value)
+	return copied
 }
 
 func (thc *TargetHashCache) ParseCanonicalLabel(label string) (gazelle_label.Label, error) {
@@ -450,7 +688,9 @@ func (thc *TargetHashCache) AttributeForSerialization(rawAttr *build.Attribute) 
 		}
 	}
 
-	return thc.normalizer.NormalizeAttribute(&normalized)
+	normalizedAttribute := thc.normalizer.NormalizeAttribute(&normalized)
+	normalizeProtoStringFields(normalizedAttribute, thc.rootPathReplacements)
+	return normalizedAttribute
 }
 
 func equivalentAttributes(left, right *build.Attribute) bool {
@@ -505,7 +745,7 @@ func hashTarget(thc *TargetHashCache, labelAndConfiguration LabelAndConfiguratio
 	switch target.GetType() {
 	case build.Target_SOURCE_FILE:
 		absolutePath := AbsolutePath(target)
-		hash, err := thc.fileHashCache.Hash(absolutePath)
+		hash, err := thc.hashSourceFile(absolutePath)
 		if err != nil {
 			// Labels may be referred to without existing, and at loading time these are assumed
 			// to be input files, even if no such file exists.
@@ -548,6 +788,91 @@ func hashTarget(thc *TargetHashCache, labelAndConfiguration LabelAndConfiguratio
 	default:
 		return nil, fmt.Errorf("didn't know how to hash target %v with unknown rule type: %v", label, target.GetType())
 	}
+}
+
+func (thc *TargetHashCache) MetadataFingerprint(labelAndConfiguration LabelAndConfiguration) ([]byte, error) {
+	cacheKey := labelAndConfigurationCacheKey(labelAndConfiguration)
+	if fingerprint, ok := thc.lookupMetadataFingerprint(cacheKey); ok {
+		return fingerprint, nil
+	}
+
+	configurationMap, ok := thc.context[labelAndConfiguration.Label]
+	if !ok {
+		return nil, fmt.Errorf("label %s not found in context: %w", labelAndConfiguration.Label, labelNotFound)
+	}
+	configuredTarget, ok := configurationMap[labelAndConfiguration.Configuration]
+	if !ok {
+		return nil, fmt.Errorf("label %s configuration %s not found in context: %w", labelAndConfiguration.Label, labelAndConfiguration.Configuration, labelNotFound)
+	}
+
+	target := configuredTarget.Target
+	hasher := sha256.New()
+	switch target.GetType() {
+	case build.Target_SOURCE_FILE:
+		hasher.Write([]byte("source"))
+	case build.Target_RULE:
+		if !thc.bazelVersionSupportsConfiguredRuleInputs {
+			return nil, fmt.Errorf("metadata fingerprint requires configured rule inputs")
+		}
+		rule := target.Rule
+		configuration := configuredTarget.Configuration
+
+		hasher.Write([]byte("rule"))
+		hasher.Write([]byte(rule.GetRuleClass()))
+		hasher.Write([]byte(rule.GetSkylarkEnvironmentHashCode()))
+		hasher.Write([]byte(configuration.GetChecksum()))
+
+		for _, attr := range sortedAttributesForHashing(rule.GetAttribute()) {
+			normalizedAttribute := thc.AttributeForSerialization(attr)
+			protoBytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(normalizedAttribute)
+			if err != nil {
+				return nil, err
+			}
+			hasher.Write(protoBytes)
+		}
+
+		ownConfiguration := NormalizeConfiguration(configuration.GetChecksum())
+		labelsAndConfigurations, err := getConfiguredRuleInputs(thc, rule, ownConfiguration)
+		if err != nil {
+			return nil, err
+		}
+		for _, ruleInputLabelAndConfigurations := range labelsAndConfigurations {
+			for _, ruleInputConfiguration := range ruleInputLabelAndConfigurations.Configurations {
+				writeLabel(hasher, ruleInputLabelAndConfigurations.Label)
+				hasher.Write(ruleInputConfiguration.ForHashing())
+			}
+		}
+	case build.Target_GENERATED_FILE:
+		generatingLabel, err := thc.ParseCanonicalLabel(*target.GeneratedFile.GeneratingRule)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse generated file generating rule label %s: %w", *target.GeneratedFile.GeneratingRule, err)
+		}
+		hasher.Write([]byte("generated"))
+		writeLabel(hasher, generatingLabel)
+	case build.Target_PACKAGE_GROUP:
+		hasher.Write([]byte("package_group"))
+	default:
+		return nil, fmt.Errorf("unknown target type for %s: %v", labelAndConfiguration.Label, target.GetType())
+	}
+	fingerprint := hasher.Sum(nil)
+	thc.storeMetadataFingerprint(cacheKey, fingerprint)
+	return fingerprint, nil
+}
+
+func (thc *TargetHashCache) lookupMetadataFingerprint(cacheKey string) ([]byte, bool) {
+	thc.metadataFingerprintLock.Lock()
+	defer thc.metadataFingerprintLock.Unlock()
+	fingerprint, ok := thc.metadataFingerprints[cacheKey]
+	if !ok {
+		return nil, false
+	}
+	return copyBytes(fingerprint), true
+}
+
+func (thc *TargetHashCache) storeMetadataFingerprint(cacheKey string, fingerprint []byte) {
+	thc.metadataFingerprintLock.Lock()
+	defer thc.metadataFingerprintLock.Unlock()
+	thc.metadataFingerprints[cacheKey] = copyBytes(fingerprint)
 }
 
 // If this function changes, so should WalkDiffs.
@@ -740,6 +1065,49 @@ type fileHashCache struct {
 type cacheEntry struct {
 	hashLock sync.Mutex
 	hash     []byte
+}
+
+func (hc *fileHashCache) Lookup(path string) ([]byte, bool) {
+	hc.cacheLock.Lock()
+	entry, ok := hc.cache[path]
+	hc.cacheLock.Unlock()
+	if !ok {
+		return nil, false
+	}
+	entry.hashLock.Lock()
+	defer entry.hashLock.Unlock()
+	if entry.hash == nil {
+		return nil, false
+	}
+	return copyBytes(entry.hash), true
+}
+
+func (hc *fileHashCache) Store(path string, hash []byte) {
+	hc.cacheLock.Lock()
+	entry, ok := hc.cache[path]
+	if !ok {
+		entry = &cacheEntry{}
+		hc.cache[path] = entry
+	}
+	hc.cacheLock.Unlock()
+
+	entry.hashLock.Lock()
+	defer entry.hashLock.Unlock()
+	entry.hash = copyBytes(hash)
+}
+
+func (hc *fileHashCache) ExtractHashes() map[string][]byte {
+	result := make(map[string][]byte)
+	hc.cacheLock.Lock()
+	defer hc.cacheLock.Unlock()
+	for path, entry := range hc.cache {
+		entry.hashLock.Lock()
+		if entry.hash != nil {
+			result[path] = copyBytes(entry.hash)
+		}
+		entry.hashLock.Unlock()
+	}
+	return result
 }
 
 // Hash computes the digest of the contents of a file at the given path, and caches the result.
