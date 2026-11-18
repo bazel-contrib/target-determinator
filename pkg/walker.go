@@ -68,6 +68,11 @@ func DiffSingleLabel(beforeMetadata, afterMetadata *QueryResults, includeDiffere
 			callback(label, differences, configuredTarget)
 			return nil
 		} else if !beforeMetadata.MatchingTargets.ContainsLabelAndConfiguration(label, configuration) {
+			// A label that keeps all its configurations only gains one through a dependent
+			// that gained an edge to it, and that dependent is reported.
+			if keepsConfigurations(beforeMetadata.MatchingTargets, afterMetadata.MatchingTargets, label) {
+				continue
+			}
 			difference := Difference{
 				Category: "NewConfiguration",
 			}
@@ -113,4 +118,13 @@ func DiffSingleLabel(beforeMetadata, afterMetadata *QueryResults, includeDiffere
 		callback(label, differences, configuredTarget)
 	}
 	return nil
+}
+
+func keepsConfigurations(before, after *MatchingTargets, label label.Label) bool {
+	for _, configuration := range before.ConfigurationsFor(label) {
+		if !after.ContainsLabelAndConfiguration(label, configuration) {
+			return false
+		}
+	}
+	return true
 }
