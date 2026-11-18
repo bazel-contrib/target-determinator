@@ -116,6 +116,26 @@ With caching, however, the "before" result may have been computed in an earlier 
 
 In practice this matters most in release pipelines where stamping or versioning variables (e.g. `MY_PKG_VERSION`) change between runs. If you want to answer "which targets would have changed, assuming the environment is the same before and after?", run `target-determinator` with `--nocache_results` to force both computations to happen in the same environment.
 
+## GitHub Action
+
+A composite GitHub Action wraps the pre-built release binaries, so you can use Target Determinator in a workflow without managing the binary download yourself:
+
+```yaml
+- uses: bazel-contrib/target-determinator@main
+  id: td
+  with:
+    targets: '//...'          # optional, defaults to //...
+    before-revision: ''       # optional, defaults to the PR base SHA
+    working-directory: '.'    # optional
+    bazel: 'bazel'            # optional
+    version: 'latest'         # optional, pin to a specific release e.g. v0.34.0
+
+- run: echo "Affected ${{ steps.td.outputs.count }} targets"
+- run: echo "${{ steps.td.outputs.affected-targets }}"
+```
+
+The action also writes a summary of the affected targets to the workflow's job summary.
+
 ## How to get Target Determinator
 
 Pre-built binary releases are published as [GitHub Releases](https://github.com/bazel-contrib/target-determinator/releases) for most changes.

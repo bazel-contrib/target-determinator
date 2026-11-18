@@ -1,0 +1,95 @@
+name: test-action
+on:
+  pull_request:
+    paths:
+      - 'action.yml'
+      - '.github/workflows/test-action.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'action.yml'
+      - '.github/workflows/test-action.yml'
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build a minimal fixture workspace with a real before/after commit
+        id: fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/td-action-fixture"
+          rm -rf "$fixture"
+          mkdir -p "$fixture"
+          cd "$fixture"
+          git init -q
+          git config user.email "test@example.com"
+          git config user.name "test"
+
+          cat > MODULE.bazel <<'EOF'
+          module(name = "td_action_test")
+          EOF
+
+          mkdir -p pkg_a pkg_b
+          cat > pkg_a/BUILD.bazel <<'EOF'
+          genrule(
+              name = "gen_a",
+              srcs = ["input.txt"],
+              outs = ["output.txt"],
+              cmd = "cp $< $@",
+          )
+          EOF
+          echo "v1" > pkg_a/input.txt
+
+          cat > pkg_b/BUILD.bazel <<'EOF'
+          genrule(
+              name = "gen_b",
+              srcs = ["input.txt"],
+              outs = ["output.txt"],
+              cmd = "cp $< $@",
+          )
+          EOF
+          echo "unrelated" > pkg_b/input.txt
+
+          git add -A
+          git commit -q -m "before"
+          before_sha=$(git rev-parse HEAD)
+
+          echo "v2" > pkg_a/input.txt
+          git add -A
+          git commit -q -m "after"
+
+          echo "fixture-dir=$fixture" >> "$GITHUB_OUTPUT"
+          echo "before-sha=$before_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Run target-determinator action against the fixture
+        id: td
+        uses: ./
+        with:
+          before-revision: ${{ steps.fixture.outputs.before-sha }}
+          working-directory: ${{ steps.fixture.outputs.fixture-dir }}
+          targets: '//...'
+
+      - name: Assert only the changed package's target is reported
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Affected targets:"
+          echo "${{ steps.td.outputs.affected-targets }}"
+
+          if [ "${{ steps.td.outputs.count }}" != "1" ]; then
+            echo "Expected exactly 1 affected target, got ${{ steps.td.outputs.count }}" >&2
+            exit 1
+          fi
+          case "${{ steps.td.outputs.affected-targets }}" in
+            *"//pkg_a:gen_a"*) ;;
+            *) echo "Expected //pkg_a:gen_a to be reported as affected" >&2; exit 1 ;;
+          esac
+          case "${{ steps.td.outputs.affected-targets }}" in
+            *"//pkg_b:gen_b"*) echo "//pkg_b:gen_b should NOT be affected (unrelated package)" >&2; exit 1 ;;
+            *) ;;
+          esac
+          echo "OK: action correctly isolated the changed package."
