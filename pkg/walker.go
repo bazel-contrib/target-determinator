@@ -27,6 +27,13 @@ func WalkAffectedTargets(context *Context, revBefore LabelledGitRev, targets Tar
 		return fmt.Errorf("could not create \"after\" revision: %w", err)
 	}
 
+	if includeDifferences && !context.IncludeDifferences {
+		// Difference explanations need both revisions' configured targets.
+		withDifferences := *context
+		withDifferences.IncludeDifferences = true
+		context = &withDifferences
+	}
+
 	beforeMetadata, afterMetadata, err := FullyProcess(context, revBefore, revAfter, targets)
 	if err != nil {
 		return fmt.Errorf("failed to process change: %w", err)
