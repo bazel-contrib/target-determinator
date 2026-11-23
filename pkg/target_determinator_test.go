@@ -98,3 +98,44 @@ func Test_ParseCanonicalLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestReleaseConfiguredTargetsKeepsPrefilledHashes(t *testing.T) {
+	const bazelRelease = "release 5.1.1"
+	labelAndConfiguration := LabelAndConfiguration{
+		Label:         mustParseLabel("//HelloWorld:HelloWorld"),
+		Configuration: NormalizeConfiguration(configurationChecksum),
+	}
+
+	_, cqueryResult := layoutProject(t)
+	normalizer := Normalizer{}
+	configuredTargets, err := ParseCqueryResult(cqueryResult.Results, &normalizer)
+	if err != nil {
+		t.Fatalf("Failed to parse cquery result: %v", err)
+	}
+	queryInfo := &QueryResults{
+		MatchingTargets:             makeMatchingTargets(labelAndConfiguration.Label, labelAndConfiguration.Configuration),
+		TransitiveConfiguredTargets: configuredTargets,
+		TargetHashCache:             NewTargetHashCache(configuredTargets, &normalizer, bazelRelease),
+		BazelRelease:                bazelRelease,
+	}
+	if err := queryInfo.PrefillCache(); err != nil {
+		t.Fatalf("PrefillCache: %v", err)
+	}
+	want, err := queryInfo.TargetHashCache.Hash(labelAndConfiguration)
+	if err != nil {
+		t.Fatalf("Hash before release: %v", err)
+	}
+
+	queryInfo.releaseConfiguredTargets()
+
+	if queryInfo.TransitiveConfiguredTargets != nil || queryInfo.TargetHashCache.context != nil {
+		t.Fatalf("configured targets are still referenced after release")
+	}
+	got, err := queryInfo.TargetHashCache.Hash(labelAndConfiguration)
+	if err != nil {
+		t.Fatalf("Hash after release: %v", err)
+	}
+	if !areHashesEqual(want, got) {
+		t.Errorf("hash changed after release: %x != %x", want, got)
+	}
+}

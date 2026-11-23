@@ -165,6 +165,10 @@ func FullyProcess(context *Context, revBefore LabelledGitRev, revAfter LabelledG
 		}
 	}
 
+	if queryInfoBefore != nil && !context.IncludeDifferences {
+		queryInfoBefore.releaseConfiguredTargets()
+	}
+
 	// At this point, we assume that the working copy is back to its pristine state.
 	log.Printf("Processing %s", revAfter)
 	queryInfoAfter, err := fullyProcessRevision(context, revAfter, targets)
@@ -647,6 +651,13 @@ OUTER:
 	// We freeze the TargetHashCache to ensure it will not allow further reads after this point.
 	queryInfo.TargetHashCache.Freeze()
 	return nil
+}
+
+// releaseConfiguredTargets drops the configured targets after PrefillCache. The frozen
+// TargetHashCache never reads them again; only difference explanations do.
+func (queryInfo *QueryResults) releaseConfiguredTargets() {
+	queryInfo.TransitiveConfiguredTargets = nil
+	queryInfo.TargetHashCache.context = nil
 }
 
 type LabelAndConfigurations struct {
