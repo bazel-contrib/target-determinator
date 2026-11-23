@@ -882,7 +882,6 @@ func sortedStringKeys[V any](m map[label.Label]V) []string {
 
 func runToCqueryResult(context *Context, pattern string, includeTransitions bool, bazelRelease string) ([]*analysis.ConfiguredTarget, error) {
 	log.Printf("Running cquery on %s", pattern)
-	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
 	useStreamedProtoPtr, _ := versions.ReleaseIsInRange(bazelRelease, version.Must(version.NewVersion("8.2.0")), nil)
@@ -898,36 +897,63 @@ func runToCqueryResult(context *Context, pattern string, includeTransitions bool
 	}
 	args = append(args, pattern)
 
-	returnVal, err := context.BazelCmd.Cquery(
-		bazelRelease,
-		BazelCmdConfig{Dir: context.WorkspacePath, Stdout: &stdout, Stderr: &stderr},
-		[]string{"--output_base", context.BazelOutputBase},
-		args...)
-
-	if returnVal != 0 || err != nil {
-		return nil, fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+	runCquery := func(stdout io.Writer) error {
+		returnVal, err := context.BazelCmd.Cquery(
+			bazelRelease,
+			BazelCmdConfig{Dir: context.WorkspacePath, Stdout: stdout, Stderr: &stderr},
+			[]string{"--output_base", context.BazelOutputBase},
+			args...)
+		if returnVal != 0 || err != nil {
+			return fmt.Errorf("failed to run cquery on %s: %w. Stderr:\n%v", pattern, err, stderr.String())
+		}
+		return nil
 	}
 
-	if useStreamedProto {
-		var targets []*analysis.ConfiguredTarget
-		unmarshalOpts := protodelim.UnmarshalOptions{MaxSize: -1}
-		for {
-			var singleTargetResult analysis.CqueryResult
-			if err = unmarshalOpts.UnmarshalFrom(&stdout, &singleTargetResult); err == io.EOF {
-				break
-			} else if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal streamed cquery stdout: %w", err)
-			}
-			targets = append(targets, singleTargetResult.Results...)
+	if !useStreamedProto {
+		var stdout bytes.Buffer
+		if err := runCquery(&stdout); err != nil {
+			return nil, err
 		}
-		return targets, nil
-	} else {
 		var result analysis.CqueryResult
-		if err = proto.Unmarshal(stdout.Bytes(), &result); err != nil {
+		if err := proto.Unmarshal(stdout.Bytes(), &result); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal cquery stdout: %w", err)
 		}
 		return result.GetResults(), nil
 	}
+
+	// Decode the output while it is written instead of holding all of it in memory first.
+	reader, writer := io.Pipe()
+	type decoded struct {
+		targets []*analysis.ConfiguredTarget
+		err     error
+	}
+	decodedChan := make(chan decoded, 1)
+	go func() {
+		var targets []*analysis.ConfiguredTarget
+		unmarshalOpts := protodelim.UnmarshalOptions{MaxSize: -1}
+		bufferedReader := bufio.NewReader(reader)
+		for {
+			var singleTargetResult analysis.CqueryResult
+			if err := unmarshalOpts.UnmarshalFrom(bufferedReader, &singleTargetResult); err == io.EOF {
+				break
+			} else if err != nil {
+				// Fails the pending write, so the cquery returns instead of blocking.
+				reader.CloseWithError(err)
+				decodedChan <- decoded{err: fmt.Errorf("failed to unmarshal streamed cquery stdout: %w", err)}
+				return
+			}
+			targets = append(targets, singleTargetResult.Results...)
+		}
+		decodedChan <- decoded{targets: targets}
+	}()
+
+	err := runCquery(writer)
+	writer.Close()
+	result := <-decodedChan
+	if err != nil {
+		return nil, err
+	}
+	return result.targets, result.err
 }
 
 func findCompatibleTargets(context *Context, pattern string, compatibility bool, n *Normalizer, bazelRelease string) (map[label.Label]bool, error) {

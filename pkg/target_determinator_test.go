@@ -1,9 +1,15 @@
 package pkg
 
 import (
+	"bytes"
+	"reflect"
 	"testing"
 
 	"github.com/bazel-contrib/target-determinator/common"
+	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/analysis"
+	"github.com/bazel-contrib/target-determinator/third_party/protobuf/bazel/build"
+	"google.golang.org/protobuf/encoding/protodelim"
+	"google.golang.org/protobuf/proto"
 )
 
 func Test_stringSliceContainsStartingWith(t *testing.T) {
@@ -96,5 +102,65 @@ func Test_ParseCanonicalLabel(t *testing.T) {
 		if err != nil {
 			t.Errorf("ParseCanonicalLabel() with (label=%s) produces error %s", tt, err)
 		}
+	}
+}
+
+// fakeCqueryBazelCmd writes output as the cquery's stdout.
+type fakeCqueryBazelCmd struct {
+	fakeBazelCmd
+	output []byte
+}
+
+func (f fakeCqueryBazelCmd) Cquery(_ string, config BazelCmdConfig, _ []string, _ ...string) (int, error) {
+	if _, err := config.Stdout.Write(f.output); err != nil {
+		return 1, err
+	}
+	return 0, nil
+}
+
+func streamedCqueryOutput(t *testing.T, names ...[]string) []byte {
+	t.Helper()
+	var output bytes.Buffer
+	for _, batch := range names {
+		var result analysis.CqueryResult
+		for _, name := range batch {
+			result.Results = append(result.Results, &analysis.ConfiguredTarget{
+				Target: &build.Target{
+					Type: build.Target_RULE.Enum(),
+					Rule: &build.Rule{Name: proto.String(name), RuleClass: proto.String("genrule")},
+				},
+			})
+		}
+		if _, err := protodelim.MarshalTo(&output, &result); err != nil {
+			t.Fatalf("MarshalTo: %v", err)
+		}
+	}
+	return output.Bytes()
+}
+
+func TestRunToCqueryResultDecodesStreamedProto(t *testing.T) {
+	context := &Context{BazelCmd: fakeCqueryBazelCmd{
+		output: streamedCqueryOutput(t, []string{"//a:a", "//b:b"}, []string{"//c:c"}),
+	}}
+	targets, err := runToCqueryResult(context, "//...", false, "release 8.2.0")
+	if err != nil {
+		t.Fatalf("runToCqueryResult: %v", err)
+	}
+	var got []string
+	for _, target := range targets {
+		got = append(got, target.GetTarget().GetRule().GetName())
+	}
+	if want := []string{"//a:a", "//b:b", "//c:c"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got targets %v, want %v", got, want)
+	}
+}
+
+func TestRunToCqueryResultFailsOnMalformedStreamedProto(t *testing.T) {
+	// A length prefix larger than the rest of the output, followed by more output than
+	// a pipe write can hand over at once.
+	output := append([]byte{0xff, 0xff, 0xff, 0x7f}, make([]byte, 1<<20)...)
+	context := &Context{BazelCmd: fakeCqueryBazelCmd{output: output}}
+	if _, err := runToCqueryResult(context, "//...", false, "release 8.2.0"); err == nil {
+		t.Fatal("expected an error for malformed cquery output")
 	}
 }

@@ -50,6 +50,7 @@ go_test(
         "//third_party/protobuf/bazel/build",
         "@bazel_gazelle//label",
         "@com_github_otiai10_copy//:copy",
+        "@org_golang_google_protobuf//encoding/protodelim",
         "@org_golang_google_protobuf//proto",
     ],
 )
